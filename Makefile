@@ -1,7 +1,7 @@
 # Makefile for flashliar
 
 
-CXXFLAGS=-DXP_UNIX -Wall -Werror
+CXXFLAGS=-DXP_UNIX -Wall -Werror -g
 
 all: install
 
