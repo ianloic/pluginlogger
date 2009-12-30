@@ -1,7 +1,7 @@
 # Makefile for pluginlogger
 
 
-CXXFLAGS=-DXP_UNIX -Wall -Werror -g -DPLUGIN=\"/home/ian/Projects/flashliar/libflashplayer.so\" -DLOGFILE=\"/tmp/plugin.log\"
+CXXFLAGS=-DXP_UNIX -Wall -Werror -g -DPLUGIN=\"/home/ian/Projects/pluginlogger/libflashplayer.so\" -DLOGFILE=\"/tmp/plugin.log\"
 
 
 all: install

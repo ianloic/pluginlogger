@@ -37,7 +37,7 @@ static NPNetscapeFuncs* gWrappedBrowserFuncs = NULL; // wrapped browser function
 static NPPluginFuncs* gPluginFuncs = NULL; // plugin functions
 
 static void* gPlugin = NULL;
-static ExportedPluginFunctions gExportedFlashFunctions = { NULL };
+static ExportedPluginFunctions gExportedPluginFunctions = { NULL };
 
 static FILE* gLogFile = NULL;
 static void log(const char* format, ...) 
@@ -51,184 +51,361 @@ static void log(const char* format, ...) {
 }
 
 /* helper to get the value of an NPIdentifier */
-class IdentifierWrapper {
+class NPIdentifierPrintable {
   private:
-    NPIdentifier mId;
-    char* mPrintable;
+    char mPrintable[256];
   public:
-    IdentifierWrapper(NPIdentifier aId) 
-      : mId(aId), mPrintable(NULL) {};
-    const char* printable() {
-      if (mPrintable == NULL) {
-        if (gBrowserFuncs->identifierisstring(mId)) {
-          NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(mId);
-          mPrintable = strdup(utf8);
-          gBrowserFuncs->memfree(utf8);
-        } else {
-          int32_t intvalue = gBrowserFuncs->intfromidentifier(mId);
-          mPrintable = (char*) malloc(256);
-          snprintf(mPrintable, 256, "%d", intvalue);
-        }
+    NPIdentifierPrintable(NPIdentifier& aIdentifier) {
+      if (gBrowserFuncs->identifierisstring(aIdentifier)) {
+        NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(aIdentifier);
+        snprintf(mPrintable, 256, "\"%s\"", utf8);
+        gBrowserFuncs->memfree(utf8);
+      } else {
+        int32_t intvalue = gBrowserFuncs->intfromidentifier(aIdentifier);
+        snprintf(mPrintable, 256, "%d", intvalue);
       }
+    }
+    operator const char*() const {
       return mPrintable;
     }
-    ~IdentifierWrapper() {
-      if (mPrintable != NULL) {
-        free(mPrintable);
+    const char* c_str() const {
+      return mPrintable;
+    }
+};
+
+/* helper to print the value of an NPString */
+class NPStringPrintable {
+  private:
+    char* mPrintable;
+  public:
+    NPStringPrintable(const NPString* aString) {
+      mPrintable = (char*)malloc(aString->UTF8Length + 3);
+      snprintf(mPrintable, aString->UTF8Length + 3, "\"%s\"", 
+          aString->UTF8Characters);
+    }
+    operator const char*() const {
+      return mPrintable;
+    }
+    const char* c_str() const {
+      return mPrintable;
+    }
+    ~NPStringPrintable() {
+      free(mPrintable);
+    }
+};
+
+/* helper to print the value of an NPVariant */
+class NPVariantPrintable {
+  private:
+    const char *mPrintable;
+    char mBuffer[32];
+    NPStringPrintable* mString;
+  public:
+    NPVariantPrintable(const NPVariant* aVariant) 
+      : mString(NULL) {
+      switch(aVariant->type) {
+        case NPVariantType_Void:
+          mPrintable = "(void)";
+          break;
+        case NPVariantType_Null:
+          mPrintable = "(null)";
+          break;
+        case NPVariantType_Bool:
+          mPrintable = aVariant->value.boolValue?"(true)":"(false)";
+          break;
+        case NPVariantType_Int32:
+          snprintf(mBuffer, 32, "%d", aVariant->value.intValue);
+          mPrintable = mBuffer;
+          break;
+        case NPVariantType_Double:
+          snprintf(mBuffer, 32, "%lf", aVariant->value.doubleValue);
+          mPrintable = mBuffer;
+          break;
+        case NPVariantType_String:
+          if (mString == NULL) {
+            mString = new NPStringPrintable(&aVariant->value.stringValue);
+          }
+          mPrintable = mString->c_str();
+          break;
+        case NPVariantType_Object:
+          snprintf(mBuffer, 32, "\"%p\"", aVariant->value.objectValue);
+          mPrintable = mBuffer;
+          break;
+      }
+    }
+    operator const char*() const {
+      return mPrintable;
+    }
+    const char* c_str() const {
+      return mPrintable;
+    }
+    ~NPVariantPrintable() {
+      if (mString != NULL) {
+        delete mString;
       }
     }
 };
 
+/* helper to get the printable name of an NPNVariable */
+const char* 
+NPNVariableName(NPNVariable variable) {
+  switch (variable) {
+    case NPNVxDisplay: return "NPNVxDisplay"; break;
+    case NPNVxtAppContext: return "NPNVxtAppContext"; break;
+    case NPNVnetscapeWindow: return "NPNVnetscapeWindow"; break;
+    case NPNVjavascriptEnabledBool: return "NPNVjavascriptEnabledBool"; break;
+    case NPNVasdEnabledBool: return "NPNVasdEnabledBool"; break;
+    case NPNVisOfflineBool: return "NPNVisOfflineBool"; break;
+    case NPNVserviceManager: return "NPNVserviceManager"; break;
+    case NPNVDOMElement: return "NPNVDOMElement"; break;
+    case NPNVDOMWindow: return "NPNVDOMWindow"; break;
+    case NPNVToolkit: return "NPNVToolkit"; break;
+    case NPNVSupportsXEmbedBool: return "NPNVSupportsXEmbedBool"; break;
+    case NPNVWindowNPObject: return "NPNVWindowNPObject"; break;
+    case NPNVPluginElementNPObject: return "NPNVPluginElementNPObject"; break;
+    case NPNVSupportsWindowless: return "NPNVSupportsWindowless"; break;
+    case NPNVprivateModeBool: return "NPNVprivateModeBool"; break;
+  }
+  return "(unknown NPNVariable)";
+}
+
+/* helper to get the printable name of an NPPVariable */
+const char* 
+NPPVariableName(NPPVariable variable) {
+  switch (variable) {
+    case NPPVpluginNameString: return "NPPVpluginNameString"; break;
+    case NPPVpluginDescriptionString: return "NPPVpluginDescriptionString"; break;
+    case NPPVpluginWindowBool: return "NPPVpluginWindowBool"; break;
+    case NPPVpluginTransparentBool: return "NPPVpluginTransparentBool"; break;
+    case NPPVjavaClass: return "NPPVjavaClass"; break;
+    case NPPVpluginWindowSize: return "NPPVpluginWindowSize"; break;
+    case NPPVpluginTimerInterval: return "NPPVpluginTimerInterval"; break;
+    case NPPVpluginScriptableInstance: return "NPPVpluginScriptableInstance"; break;
+    case NPPVpluginScriptableIID: return "NPPVpluginScriptableIID"; break;
+    case NPPVjavascriptPushCallerBool: return "NPPVjavascriptPushCallerBool"; break;
+    case NPPVpluginKeepLibraryInMemory: return "NPPVpluginKeepLibraryInMemory"; break;
+    case NPPVpluginNeedsXEmbed        : return "NPPVpluginNeedsXEmbed        "; break;
+    case NPPVpluginScriptableNPObject : return "NPPVpluginScriptableNPObject "; break;
+    case NPPVformValue: return "NPPVformValue"; break;
+    case NPPVpluginUrlRequestsDisplayedBool: return "NPPVpluginUrlRequestsDisplayedBool"; break;
+    case NPPVpluginWantsAllNetworkStreams: return "NPPVpluginWantsAllNetworkStreams"; break;
+  }
+  return "(unknown NPPVariable)";
+}
+
+/* helper to get the printable name of an NPError */
+const char*
+NPErrorName(NPError e) {
+  switch(e) {
+    case NPERR_NO_ERROR: return "NO_ERROR"; break;
+    case NPERR_GENERIC_ERROR: return "GENERIC_ERROR"; break;
+    case NPERR_INVALID_INSTANCE_ERROR: return "INVALID_INSTANCE_ERROR"; break;
+    case NPERR_INVALID_FUNCTABLE_ERROR: return "INVALID_FUNCTABLE_ERROR"; break;
+    case NPERR_MODULE_LOAD_FAILED_ERROR: return "MODULE_LOAD_FAILED_ERROR"; break;
+    case NPERR_OUT_OF_MEMORY_ERROR: return "OUT_OF_MEMORY_ERROR"; break;
+    case NPERR_INVALID_PLUGIN_ERROR: return "INVALID_PLUGIN_ERROR"; break;
+    case NPERR_INVALID_PLUGIN_DIR_ERROR: return "INVALID_PLUGIN_DIR_ERROR"; break;
+    case NPERR_INCOMPATIBLE_VERSION_ERROR: return "INCOMPATIBLE_VERSION_ERROR"; break;
+    case NPERR_INVALID_PARAM: return "INVALID_PARAM"; break;
+    case NPERR_INVALID_URL: return "INVALID_URL"; break;
+    case NPERR_FILE_NOT_FOUND: return "FILE_NOT_FOUND"; break;
+    case NPERR_NO_DATA: return "NO_DATA"; break;
+    case NPERR_STREAM_NOT_SEEKABLE: return "STREAM_NOT_SEEKABLE"; break;
+  }
+  return "UNKNOWN NPError";
+}
 
 /* wrapped browser functions */
-NPError wrap_NPN_GetValue (NPP npp, NPNVariable variable, void *ret_value) {
-  log("NPN_GetValue(npp=%p, variable=%d, value=%p)\n", npp, variable, ret_value);
+NPError 
+wrap_NPN_GetValue (NPP npp, NPNVariable variable, void *ret_value) {
+  log("NPN_GetValue(npp=%p, variable=%s, value=%p)\n", 
+      npp, NPNVariableName(variable), ret_value);
   NPError e = gBrowserFuncs->getvalue(npp, variable, ret_value);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_SetValue (NPP npp, NPPVariable variable, void *value) {
-  log("NPN_SetValue(npp=%p, variable=%d, value=%p)\n", npp, variable, value);
+NPError 
+wrap_NPN_SetValue (NPP npp, NPPVariable variable, void *value) {
+  log("NPN_SetValue(npp=%p, variable=%s, value=%p)\n", 
+      npp, NPPVariableName(variable), value);
   NPError e = gBrowserFuncs->setvalue(npp, variable, value);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_GetURLNotify (NPP npp, const char* url, const char* window, void* notifyData) {
-  log("NPN_GetURLNotify(npp=%p, url=\"%s\", window=\"%s\", notifydata=%p)\n", npp, url, window, notifyData);
+NPError 
+wrap_NPN_GetURLNotify (NPP npp, const char* url, const char* window, 
+    void* notifyData) {
+  log("NPN_GetURLNotify(npp=%p, url=\"%s\", window=\"%s\", notifydata=%p)\n", 
+      npp, url, window, notifyData);
   NPError e = gBrowserFuncs->geturlnotify(npp, url, window, notifyData);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_PostURLNotify (NPP npp, const char* url, const char* window, uint32_t len, const char* buf, NPBool file, void* notifyData) {
-  log("NPN_PostURLNotify(npp=%p, url=\"%s\", window=\"%s\", len=%d, buf=%p, file=%d, notifyData=%p)\n", npp, url, window, len, buf, file, notifyData);
-  NPError e = gBrowserFuncs->posturlnotify(npp, url, window, len, buf, file, notifyData);
-  log(" returned %d\n", e);
+NPError 
+wrap_NPN_PostURLNotify (NPP npp, const char* url, const char* window, 
+    uint32_t len, const char* buf, NPBool file, void* notifyData) {
+  log("NPN_PostURLNotify(npp=%p, url=\"%s\", window=\"%s\", len=%d, buf=%p, "
+      "file=%d, notifyData=%p)\n", 
+      npp, url, window, len, buf, file, notifyData);
+  NPError e = gBrowserFuncs->posturlnotify(npp, url, window, len, buf, file, 
+      notifyData);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_GetURL (NPP npp, const char* url, const char* window) {
+NPError 
+wrap_NPN_GetURL (NPP npp, const char* url, const char* window) {
   log("NPN_GetURL(npp=%p, url=\"%s\", window=\"%s\")\n", npp, url, window);
   NPError e = gBrowserFuncs->geturl(npp, url, window);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_PostURL (NPP npp, const char* url, const char* window, uint32_t len, const char* buf, NPBool file) {
-  log("NPN_PostURL(npp=%p, url=\"%s\", window=\"%s\", len=%d, buf=%p, file=%d)\n", npp, url, window, len, buf, file);
+NPError 
+wrap_NPN_PostURL (NPP npp, const char* url, const char* window, 
+    uint32_t len, const char* buf, NPBool file) {
+  log("NPN_PostURL(npp=%p, url=\"%s\", window=\"%s\", len=%d, "
+      "buf=%p, file=%d)\n", npp, url, window, len, buf, file);
   NPError e = gBrowserFuncs->posturl(npp, url, window, len, buf, file);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_RequestRead (NPStream* stream, NPByteRange* rangeList) {
+NPError 
+wrap_NPN_RequestRead (NPStream* stream, NPByteRange* rangeList) {
   log("NPN_RequestRead(stream=%p)\n", stream);
   for (NPByteRange* r=rangeList; r!=NULL; r=r->next) {
     log("  range offset=%d length=%d\n", r->offset, r->length);    
   }
   NPError e = gBrowserFuncs->requestread(stream, rangeList);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_NewStream (NPP npp, NPMIMEType type, const char* window, NPStream** stream) {
-  log("NPN_NewStream(npp=%p, type=\"%s\", window=\"%s\", stream=%p)\n", npp, type, window, stream);
+NPError 
+wrap_NPN_NewStream (NPP npp, NPMIMEType type, const char* window, 
+    NPStream** stream) {
+  log("NPN_NewStream(npp=%p, type=\"%s\", window=\"%s\", stream=%p)\n", 
+      npp, type, window, stream);
   NPError e = gBrowserFuncs->newstream(npp, type, window, stream);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-int32_t wrap_NPN_Write (NPP npp, NPStream* stream, int32_t len, void* buffer) {
-  log("NPN_Write(npp=%p, stream=%p, len=%d, buffer=%p\n", npp, stream, len, buffer);
+int32_t 
+wrap_NPN_Write (NPP npp, NPStream* stream, int32_t len, void* buffer) {
+  log("NPN_Write(npp=%p, stream=%p, len=%d, buffer=%p\n", 
+      npp, stream, len, buffer);
   int32_t r = gBrowserFuncs->write(npp, stream, len, buffer);
   log(" returned %d\n", r);
   return r;
 }
 
-NPError wrap_NPN_DestroyStream (NPP npp, NPStream* stream, NPReason reason) {
-  log("NPN_DestroySTream(npp=%p, stream=%p, reason=%d)\n", npp, stream, reason);
+NPError 
+wrap_NPN_DestroyStream (NPP npp, NPStream* stream, NPReason reason) {
+  log("NPN_DestroyStream(npp=%p, stream=%p, reason=%d)\n", 
+      npp, stream, reason);
   NPError e = gBrowserFuncs->destroystream(npp, stream, reason);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-void wrap_NPN_Status (NPP npp, const char* message) {
+void 
+wrap_NPN_Status (NPP npp, const char* message) {
   log("NPN_Status(npp=%p, message=\"%s\"\n", npp, message);
   gBrowserFuncs->status(npp, message);
   return;
 }
 
-const char* wrap_NPN_UserAgent (NPP npp) {
+const char* 
+wrap_NPN_UserAgent (NPP npp) {
   log("NPN_UserAgent(npp=%p)\n", npp);
   const char* r = gBrowserFuncs->uagent(npp);
   log(" returned \"%s\"\n", r);
   return r;
 }
 
-void* wrap_NPN_MemAlloc (uint32_t size) {
+void* 
+wrap_NPN_MemAlloc (uint32_t size) {
   log("NPN_MemAlloc(size=%d)\n", size);
   void* r = gBrowserFuncs->memalloc(size);
   log(" returned \"%p\"\n", r);
   return r;
 }
 
-void wrap_NPN_MemFree (void* ptr) {
+void 
+wrap_NPN_MemFree (void* ptr) {
   log("NPN_MemFree(ptr=%p)\n", ptr);
   gBrowserFuncs->memfree(ptr);
   return;
 }
 
-uint32_t wrap_NPN_MemFlush (uint32_t size) {
+uint32_t 
+wrap_NPN_MemFlush (uint32_t size) {
   log("NPN_MemFlush(size=%d)\n", size);
   uint32_t r = gBrowserFuncs->memflush(size);
   log(" returned %d\n", r);
   return r;
 }
 
-void wrap_NPN_ReloadPlugins (NPBool reloadPages) {
+void 
+wrap_NPN_ReloadPlugins (NPBool reloadPages) {
   log("NPN_ReloadPlugins(reloadPages=%d)\n", reloadPages);
   gBrowserFuncs->reloadplugins(reloadPages);
 }
 
-void* wrap_NPN_GetJavaEnv () {
+void* 
+wrap_NPN_GetJavaEnv () {
   log("NPN_GetJavaEnv()\n");
   void* r = gBrowserFuncs->getJavaEnv();
   log(" returned %p\n", r);
   return r;
 }
 
-void* wrap_NPN_GetJavaPeer (NPP npp) {
+void* 
+wrap_NPN_GetJavaPeer (NPP npp) {
   log("NPN_GetJavaPeer(npp=%p)\n", npp);
   void* r = gBrowserFuncs->getJavaPeer(npp);
   log(" returned %p\n", r);
   return r;
 }
 
-void wrap_NPN_InvalidateRect (NPP npp, NPRect *rect) {
-  log("NPN_InvalidateRect(npp=%p rect={top=%d, left=%d, bottom=%d, right=%d})\n", npp, rect->top, rect->left, rect->bottom, rect->right);
+void 
+wrap_NPN_InvalidateRect (NPP npp, NPRect *rect) {
+  log("NPN_InvalidateRect(npp=%p rect={top=%d, left=%d, bottom=%d, "
+      "right=%d})\n", npp, rect->top, rect->left, rect->bottom, rect->right);
   gBrowserFuncs->invalidaterect(npp, rect);
+  return;
 }
 
-void wrap_NPN_InvalidateRegion (NPP npp, NPRegion region) {
+void 
+wrap_NPN_InvalidateRegion (NPP npp, NPRegion region) {
   log("NPN_InvalidateRegion(npp=%p, region=%p\n", npp, region);
   gBrowserFuncs->invalidateregion(npp, region);
+  return;
 }
 
-void wrap_NPN_ForceRedraw (NPP npp) {
+void 
+wrap_NPN_ForceRedraw (NPP npp) {
   log("NPN_ForceRedraw(npp=%p)\n", npp);
   gBrowserFuncs->forceredraw(npp);
+  return;
 }
 
-NPIdentifier wrap_NPN_GetStringIdentifier (const NPUTF8* name) {
+NPIdentifier 
+wrap_NPN_GetStringIdentifier (const NPUTF8* name) {
   log("NPN_GetStringIdentifier(name=\"%s\")\n", name);
   NPIdentifier r = gBrowserFuncs->getstringidentifier(name);
   log(" returned %p\n", r);
   return r;
 }
 
-void wrap_NPN_GetStringIdentifiers (const NPUTF8** names, int32_t nameCount, NPIdentifier* identifiers) {
+void 
+wrap_NPN_GetStringIdentifiers (const NPUTF8** names, int32_t nameCount, 
+    NPIdentifier* identifiers) {
   log("NPN_GetStringIdentifiers(nameCount=%d)\n", nameCount);
   gBrowserFuncs->getstringidentifiers(names, nameCount, identifiers);
   log(" returned: \n");
@@ -237,212 +414,292 @@ void wrap_NPN_GetStringIdentifiers (const NPUTF8** names, int32_t nameCount, NPI
   }
 }
 
-NPIdentifier wrap_NPN_GetIntIdentifier (int32_t intid) {
+NPIdentifier 
+wrap_NPN_GetIntIdentifier (int32_t intid) {
   log("NPN_GetIntIdentifier(intid=%d)\n", intid);
   NPIdentifier r = gBrowserFuncs->getintidentifier(intid);
   log(" returned %p\n", r);
   return r;
 }
 
-bool wrap_NPN_IdentifierIsString (NPIdentifier identifier) {
+bool 
+wrap_NPN_IdentifierIsString (NPIdentifier identifier) {
   log("NPN_IdentifierIsString(identifier=%p)\n", identifier);
   bool r = gBrowserFuncs->identifierisstring(identifier);
+  log(" returned %d\n", r);
   return r;
 }
 
-NPUTF8* wrap_NPN_UTF8FromIdentifier (NPIdentifier identifier) {
+NPUTF8* 
+wrap_NPN_UTF8FromIdentifier (NPIdentifier identifier) {
   log("NPN_UTF8FromIdentifier(identifier=%p)\n", identifier);
   NPUTF8* r = gBrowserFuncs->utf8fromidentifier(identifier);
   log(" returned \"%s\"\n", r);
   return r;
 }
 
-int32_t wrap_NPN_IntFromIdentifier (NPIdentifier identifier) {
+int32_t 
+wrap_NPN_IntFromIdentifier (NPIdentifier identifier) {
   log("NPN_IntFromIdentifier(identifier=%p)\n", identifier);
   int32_t r = gBrowserFuncs->intfromidentifier(identifier);
   log(" returned %d\n", r);
   return r;
 }
 
-NPObject* wrap_NPN_CreateObject (NPP npp, NPClass *aClass) {
+NPObject* 
+wrap_NPN_CreateObject (NPP npp, NPClass *aClass) {
   log("NPN_CreateObject(npp=%p, class=%p)\n", npp, aClass);
   NPObject* r = gBrowserFuncs->createobject(npp, aClass);
   log(" returned %p\n", r);
   return r;
 }
 
-NPObject* wrap_NPN_RetainObject (NPObject *obj) {
+NPObject* 
+wrap_NPN_RetainObject (NPObject *obj) {
   log("NPN_RetainObject(obj=%p)\n", obj);
   NPObject* r = gBrowserFuncs->retainobject(obj);
   log(" returned %p\n", r);
   return r;
 }
 
-void wrap_NPN_ReleaseObject (NPObject *obj) {
+void 
+wrap_NPN_ReleaseObject (NPObject *obj) {
   log("NPN_ReleaseObject(obj=%p)\n", obj);
   gBrowserFuncs->releaseobject(obj);
+  return;
 }
 
-bool wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName, const NPVariant *args, uint32_t argCount, NPVariant *result) {
-  log("NPN_Invoke(npp=%p, obj=%p, methodName=%s args=%p, argCount=%d, "
-      "result=%p)\n", npp, obj, IdentifierWrapper(methodName).printable(), 
-      args, argCount, result);
-  bool r =  gBrowserFuncs->invoke(npp, obj, methodName, args, argCount, result);
-  log(" returned %d\n", r);
+bool 
+wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName, 
+    const NPVariant *args, uint32_t argCount, NPVariant *result) {
+  log("NPN_Invoke(npp=%p, obj=%p, methodName=%s)\n", npp, obj,
+      NPIdentifierPrintable(methodName).c_str());
+  for (uint32_t i=0; i<argCount; i++) {
+    log("  args[%d] = %s\n", i, NPVariantPrintable(&args[i]).c_str());
+  }
+  bool r =  gBrowserFuncs->invoke(npp, obj, methodName, args, argCount, 
+      result);
+  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
   return r;
 }
 
-bool wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args, uint32_t argCount, NPVariant *result) {
-  log("NPN_InvokeDefault(npp=%p, obj=%p, args=%p, argCount=%d, result=%p)\n", npp, obj, args, argCount, result);
+bool 
+wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args, 
+    uint32_t argCount, NPVariant *result) {
+  log("NPN_InvokeDefault(npp=%p, obj=%p)\n", npp, obj);
+  for (uint32_t i=0; i<argCount; i++) {
+    log("  args[%d] = %s\n", i, NPVariantPrintable(&args[i]).c_str());
+  }
   bool r = gBrowserFuncs->invokeDefault(npp, obj, args, argCount, result);
-  log(" returned %d\n", r);
+  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
   return r;
 }
 
-bool wrap_NPN_Evaluate (NPP npp, NPObject *obj, NPString *script, NPVariant *result) {
-  log("NPN_Evaluate(npp=%p, obj=%p, script=\"%s\", result=%p)\n", npp, obj, script->UTF8Characters, result);
-  bool r = gBrowserFuncs->evaluate(npp, obj, script, result);
-  log(" returned %d\n", r);
-  return r;
-}
-
-bool wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+bool 
+wrap_NPN_Evaluate (NPP npp, NPObject *obj, NPString *script, 
     NPVariant *result) {
-  log("NPN_GetProperty(npp=%p, obj=%p, propertyName=\"%s\", result=%p)\n", 
-      npp, obj, IdentifierWrapper(propertyName).printable(), result);
-  bool r = gBrowserFuncs->getproperty(npp, obj, propertyName, result);
-  log(" returned %d\n", r);
+  log("NPN_Evaluate(npp=%p, obj=%p, script=%s)\n", npp, obj, 
+      NPStringPrintable(script).c_str());
+  bool r = gBrowserFuncs->evaluate(npp, obj, script, result);
+  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
   return r;
 }
 
-bool wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+bool 
+wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+    NPVariant *result) {
+  log("NPN_GetProperty(npp=%p, obj=%p, propertyName=%s)\n", 
+      npp, obj, NPIdentifierPrintable(propertyName).c_str());
+  bool r = gBrowserFuncs->getproperty(npp, obj, propertyName, result);
+  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
+  return r;
+}
+
+bool 
+wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
     const NPVariant *value) {
-  log("NPN_SetProperty(npp=%p, obj=%p, propertyName=\"%s\", value=%p)\n", 
-      npp, obj, IdentifierWrapper(propertyName).printable(), value);
+  log("NPN_SetProperty(npp=%p, obj=%p, propertyName=%s, value=%p)\n", 
+      npp, obj, NPIdentifierPrintable(propertyName).c_str(), 
+      NPVariantPrintable(value).c_str());
   bool r = gBrowserFuncs->setproperty(npp, obj, propertyName, value);
   log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_RemoveProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
-  log("NPN_RemoveProperty(npp=%p, obj=%p, properyName=\"%s\")\n", 
-      npp, obj, IdentifierWrapper(propertyName).printable());
+bool 
+wrap_NPN_RemoveProperty (NPP npp, NPObject *obj, 
+    NPIdentifier propertyName) {
+  log("NPN_RemoveProperty(npp=%p, obj=%p, properyName=%s)\n", 
+      npp, obj, NPIdentifierPrintable(propertyName).c_str());
   bool r = gBrowserFuncs->removeproperty(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_HasProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
-  log("NPN_HasProperty(npp=%p, obj=%p, propertyName=\"%s\")\n", 
-      npp, obj, IdentifierWrapper(propertyName).printable());
+bool 
+wrap_NPN_HasProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
+  log("NPN_HasProperty(npp=%p, obj=%p, propertyName=%s)\n", 
+      npp, obj, NPIdentifierPrintable(propertyName).c_str());
   bool r = gBrowserFuncs->hasproperty(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_HasMethod (NPP npp, NPObject *obj, NPIdentifier propertyName) {
-  log("NPN_HasMethod(npp=%p, obj=%p, propertyName=\"%s\")\n", 
-      npp, obj, IdentifierWrapper(propertyName).printable());
+bool 
+wrap_NPN_HasMethod (NPP npp, NPObject *obj, NPIdentifier propertyName) {
+  log("NPN_HasMethod(npp=%p, obj=%p, propertyName=%s)\n", 
+      npp, obj, NPIdentifierPrintable(propertyName).c_str());
   bool r = gBrowserFuncs->hasmethod(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
 }
 
-void wrap_NPN_ReleaseVariantValue (NPVariant *variant) {
-  log("NPN_ReleaseVariantValue(variant=%p)\n", variant);
+void 
+wrap_NPN_ReleaseVariantValue (NPVariant *variant) {
+  log("NPN_ReleaseVariantValue(variant=%s)\n", 
+      NPVariantPrintable(variant).c_str());
   gBrowserFuncs->releasevariantvalue(variant);
+  return;
 }
 
-void wrap_NPN_SetException (NPObject *obj, const NPUTF8 *message) {
+void 
+wrap_NPN_SetException (NPObject *obj, const NPUTF8 *message) {
   log("NPN_SetException(obj=%p, message=\"%s\")\n", obj, message);
   gBrowserFuncs->setexception(obj, message);
+  return;
 }
 
-bool wrap_NPN_PushPopupsEnabledState (NPP npp, NPBool enabled) {
+bool 
+wrap_NPN_PushPopupsEnabledState (NPP npp, NPBool enabled) {
   log("NPN_PushPopupsEnabledState(npp=%p, enabled=%d)\n", npp, enabled);
   bool r = gBrowserFuncs->pushpopupsenabledstate(npp, enabled);
   log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_PopPopupsEnabledState (NPP npp) {
+bool 
+wrap_NPN_PopPopupsEnabledState (NPP npp) {
   log("NPN_PopPopupsEnabledState(npp=%p)\n", npp);
   bool r = gBrowserFuncs->poppopupsenabledstate(npp);
   log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_Enumerate (NPP npp, NPObject *obj, NPIdentifier **identifier, uint32_t *count) {
-  log("NPN_Enumerate(npp=%p, obj=%p, identifier=%p, count=%p\n", npp, obj, identifier, count);
+bool 
+wrap_NPN_Enumerate (NPP npp, NPObject *obj, NPIdentifier **identifier, 
+    uint32_t *count) {
+  log("NPN_Enumerate(npp=%p, obj=%p)\n", npp, obj);
   bool r = gBrowserFuncs->enumerate(npp, obj, identifier, count);
+  if (r) {
+    for (uint32_t i = 0; i < *count; i++) {
+      log("  %s\n", NPIdentifierPrintable(*identifier[i]).c_str());
+    }
+  }
   log(" returned %d\n", r);
   return r;
 }
 
-void wrap_NPN_PluginThreadAsyncCall (NPP npp, void (*func)(void *), void *userData) {
-  log("NPN_PluginThreadAsyncCall(npp=%p, func=%p, userData=%p)\n", npp, func, userData);
+void 
+wrap_NPN_PluginThreadAsyncCall (NPP npp, void (*func)(void *), 
+    void *userData) {
+  log("NPN_PluginThreadAsyncCall(npp=%p, func=%p, userData=%p)\n", 
+      npp, func, userData);
   gBrowserFuncs->pluginthreadasynccall(npp, func, userData);
 }
 
-bool wrap_NPN_Construct (NPP npp, NPObject* obj, const NPVariant *args, uint32_t argCount, NPVariant *result) {
-  log("NPN_Construct(npp=%p, obj=%p, args=%p, argCount=%d, result=%p)\n", 
-      npp, obj, args, argCount, result);
+bool 
+wrap_NPN_Construct (NPP npp, NPObject* obj, const NPVariant *args, 
+    uint32_t argCount, NPVariant *result) {
+  log("NPN_Construct(npp=%p, obj=%p)\n", npp, obj);
+  for (uint32_t i = 0; i<argCount; i++) {
+    log("  arg[%d] = %s\n", i, NPVariantPrintable(&args[i]).c_str());
+  }
   bool r = gBrowserFuncs->construct(npp, obj, args, argCount, result);
-  log(" returned %d\n", r);
+  // FIXME: check return value before showing result?
+  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
   return r;
 }
 
-NPError wrap_NPN_GetValueForURL (NPP npp, NPNURLVariable variable, const char *url, char **value, uint32_t *len) {
-  log("NPN_GetValueForURL(npp=%p variable=%s, url=\"%s\", value=%p len=%p)\n", 
-      npp, (variable==NPNURLVCookie)?"cookie":
-        ((variable==NPNURLVProxy)?"proxy":"unknown"), url, value, len);
+NPError 
+wrap_NPN_GetValueForURL (NPP npp, NPNURLVariable variable, 
+    const char *url, char **value, uint32_t *len) {
+  log("NPN_GetValueForURL(npp=%p variable=%s, url=\"%s\")\n", npp, 
+      (variable==NPNURLVCookie)?"cookie": 
+      ((variable==NPNURLVProxy)?"proxy":"unknown"), url);
   NPError e = gBrowserFuncs->getvalueforurl(npp, variable, url, value, len);
-  log(" returned %d\n", e);
+  // FIXME: check return before printing values?
+  for (uint32_t i=0; i<*len; i++) {
+    log("  value[%d] = \"%s\"\n", i, value[i]);
+  }
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_SetValueForURL (NPP npp, NPNURLVariable variable, const char *url, const char *value, uint32_t len) {
-  log("NPN_SetValueForURL(npp=%p, variable=%s, url=\"%s\", value=\"%s\", len=%d)\n", 
-      npp, (variable==NPNURLVCookie)?"cookie":
+NPError 
+wrap_NPN_SetValueForURL (NPP npp, NPNURLVariable variable, 
+    const char *url, const char *value, uint32_t len) {
+  log("NPN_SetValueForURL(npp=%p, variable=%s, url=\"%s\", value=\"%s\", "
+      "len=%d)\n", npp, 
+      (variable==NPNURLVCookie)?"cookie":
       ((variable==NPNURLVProxy)?"proxy":"unknown"), url, value, len);
   NPError e = gBrowserFuncs->setvalueforurl(npp, variable, url, value, len);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError wrap_NPN_GetAuthenticationInfo (NPP npp, const char *protocol, const char *host, int32_t port, const char *scheme, const char *realm, char **username, uint32_t *ulen, char **password, uint32_t *plen) {
+NPError 
+wrap_NPN_GetAuthenticationInfo (NPP npp, const char *protocol, 
+    const char *host, int32_t port, const char *scheme, 
+    const char *realm, char **username, uint32_t *ulen, 
+    char **password, uint32_t *plen) {
   log("NPN_GetAuthenticationInfo(npp=%p, protocol=\"%s\", host=\"%s\", "
-      "port=%d, scheme=\"%s\", realm=\"%s\", username=%p, ulen=%p, "
-      "password=%p, plen=%p\n",
-      npp, protocol, host, port, scheme, realm, username, ulen, password, plen);
-  NPError e = gBrowserFuncs->getauthenticationinfo(npp, protocol, host, port, scheme, realm, username, ulen, password, plen);
-  log(" returned %d\n", e);
+      "port=%d, scheme=\"%s\", realm=\"%s\")\n", 
+      npp, protocol, host, port, scheme, realm);
+  NPError e = gBrowserFuncs->getauthenticationinfo(npp, protocol, host, 
+      port, scheme, realm, username, ulen, password, plen);
+  // FIXME: check return value before printing username & password?
+  // FIXME: copy & truncate username & password
+  log(" returned %s, username=\"%s\", password=\"%s\"\n", 
+      NPErrorName(e), *username, *password);
   return e;
 }
 
-uint32_t wrap_NPN_ScheduleTimer (NPP npp, uint32_t interval, NPBool repeat, void (*timerFunc)(NPP npp, uint32_t timerID)) {
-  log("NPN_ScheduleTimer(npp=%p, interval=%d, repeat=%d, timerFunc=%p)\n", npp, interval, repeat, timerFunc);
+uint32_t 
+wrap_NPN_ScheduleTimer (NPP npp, uint32_t interval, NPBool repeat, 
+    void (*timerFunc)(NPP npp, uint32_t timerID)) {
+  log("NPN_ScheduleTimer(npp=%p, interval=%d, repeat=%d, timerFunc=%p)\n", 
+      npp, interval, repeat, timerFunc);
   uint32_t r = gBrowserFuncs->scheduletimer(npp, interval, repeat, timerFunc);
   log(" returned %d\n", r);
   return r;
 }
 
-void wrap_NPN_UnscheduleTimer (NPP npp, uint32_t timerID) {
+void 
+wrap_NPN_UnscheduleTimer (NPP npp, uint32_t timerID) {
   log("NPN_UnscheduleTimer(npp=%p, timerID=%d)\n", npp, timerID);
   gBrowserFuncs->unscheduletimer(npp, timerID);
+  return;
 }
 
-NPError wrap_NPN_PopUpContextMenu (NPP npp, NPMenu* menu) {
+NPError 
+wrap_NPN_PopUpContextMenu (NPP npp, NPMenu* menu) {
   log("NPN_PopUpContextMenu(npp=%p, NPMenu=%p)\n", npp, menu);
   NPError e = gBrowserFuncs->popupcontextmenu(npp, menu);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPBool wrap_NPN_ConvertPoint (NPP npp, double sourceX, double sourceY, NPCoordinateSpace sourceSpace, double *destX, double *destY, NPCoordinateSpace destSpace) {
-  log("NPN_ConvertPoint(npp=%p, sourceX=%f, sourceY=%f, sourceSpace=%d, destX=%p, destY=%p, destSpace=%d)\n", npp, sourceX, sourceY, sourceSpace, destX, destY, destSpace);
-  NPBool r = gBrowserFuncs->convertpoint(npp, sourceX, sourceY, sourceSpace, destX, destY, destSpace);
-  log(" returned %d\n", r);
+NPBool 
+wrap_NPN_ConvertPoint (NPP npp, 
+    double sourceX, double sourceY, NPCoordinateSpace sourceSpace, 
+    double *destX, double *destY, NPCoordinateSpace destSpace) {
+  log("NPN_ConvertPoint(npp=%p, sourceX=%lf, sourceY=%lf, sourceSpace=%d, "
+      "destSpace=%d)\n", npp, sourceX, sourceY, sourceSpace, destSpace);
+  NPBool r = gBrowserFuncs->convertpoint(npp, sourceX, sourceY, sourceSpace, 
+      destX, destY, destSpace);
+  // FIXME: should we print destX and destY on r==FALSE?
+  // how can I tell? it's not documented anywhere
+  log(" returned %d, destX=%lf, destY=%lf\n", r, *destX, *destY);
   return r;
 }
 
@@ -463,7 +720,7 @@ wrap_NPP_New(NPMIMEType   pluginType,
   }
   NPError e = gPluginFuncs->newp(pluginType, instance, mode, 
       argc, argn, argv, saved);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
@@ -472,7 +729,7 @@ NPError
 wrap_NPP_Destroy(NPP instance, NPSavedData** save) {
   log("NPP_Destroy(instance=%p, save=%p)\n", instance, save);
   NPError e = gPluginFuncs->destroy(instance, save);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
@@ -480,7 +737,7 @@ NPError
 wrap_NPP_SetWindow(NPP instance, NPWindow* window) {
   log("NPP_SetWindow(instance=%p, window=%p)\n", instance, window);
   NPError e = gPluginFuncs->setwindow(instance, window);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 };
 
@@ -490,21 +747,23 @@ wrap_NPP_NewStream(NPP instance, NPMIMEType type, NPStream* stream,
   log("NPP_NewStream(instance=%p, type=\"%s\", stream=%p, seekable=%d, "
       "stype=%p)\n", instance, type, stream, seekable, stype);
   NPError e = gPluginFuncs->newstream(instance, type, stream, seekable, stype);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
 NPError
 wrap_NPP_DestroyStream(NPP instance, NPStream* stream, NPReason reason) {
-  log("NPP_DestroyStream(instance=%p, stream=%p, reason=%d)\n", instance, stream, reason);
+  log("NPP_DestroyStream(instance=%p, stream=%p, reason=%d)\n", 
+      instance, stream, reason);
   NPError e = gPluginFuncs->destroystream(instance, stream, reason);
-  log(" returned %d\n", e);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 };
 
 void
 wrap_NPP_StreamAsFile(NPP instance, NPStream* stream, const char* fname) {
-  log("NPP_StreamAsFile(instance=%p, stream=%p, fname=\"%s\")\n", instance, stream, fname);
+  log("NPP_StreamAsFile(instance=%p, stream=%p, fname=\"%s\")\n", 
+      instance, stream, fname);
   gPluginFuncs->asfile(instance, stream, fname);
 }
 
@@ -517,8 +776,10 @@ wrap_NPP_WriteReady(NPP instance, NPStream* stream) {
 }
 
 int32_t
-wrap_NPP_Write(NPP instance, NPStream* stream, int32_t offset, int32_t len, void* buffer) {
-  log("NPP_Write(instance=%p, stream=%p, offset=%d, len=%d, buffer=%p)\n", instance, stream, offset, len, buffer);
+wrap_NPP_Write(NPP instance, NPStream* stream, int32_t offset, int32_t len, 
+    void* buffer) {
+  log("NPP_Write(instance=%p, stream=%p, offset=%d, len=%d, buffer=%p)\n", 
+      instance, stream, offset, len, buffer);
   int32_t r = gPluginFuncs->write(instance, stream, offset, len, buffer);
   log(" returned %d\n", r);
   return r;
@@ -540,7 +801,8 @@ wrap_NPP_HandleEvent(NPP instance, void* event) {
 }
 
 void
-wrap_NPP_URLNotify(NPP instance, const char* url, NPReason reason, void* notifyData) {
+wrap_NPP_URLNotify(NPP instance, const char* url, NPReason reason, 
+    void* notifyData) {
   log("NPP_URLNotify(instance=%p, url=\"%s\", reason=%d, notifyData=%p)\n",
       instance, url, reason, notifyData);
   gPluginFuncs->urlnotify(instance, url, reason, notifyData);
@@ -549,15 +811,19 @@ wrap_NPP_URLNotify(NPP instance, const char* url, NPReason reason, void* notifyD
 
 NPError
 wrap_NPP_GetValue(NPP instance, NPPVariable variable, void* ret) {
-  log("NPP_GetValue(instance=%p, variable=%d, ret=%p)\n", instance, variable, ret);
+  log("NPP_GetValue(instance=%p, variable=%s, ret=%p)\n", 
+      instance, NPPVariableName(variable), ret);
   NPError e = gPluginFuncs->getvalue(instance, variable, ret);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
 NPError
 wrap_NPP_SetValue(NPP instance, NPNVariable variable, void* ret) {
-  log("NPP_SetValue(instance=%p, variable=%d, ret=%p)\n", instance, variable, ret);
+  log("NPP_SetValue(instance=%p, variable=%s, ret=%p)\n", 
+      instance, NPNVariableName(variable), ret);
   NPError e = gPluginFuncs->setvalue(instance, variable, ret);
+  log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
@@ -576,15 +842,15 @@ initialize() {
   }
 
   // get handles to all of the global function pointers from the plugin
-  gExportedFlashFunctions.initialize = (NP_Initialize_Func)
+  gExportedPluginFunctions.initialize = (NP_Initialize_Func)
     dlsym(gPlugin, "NP_Initialize");
-  gExportedFlashFunctions.getPluginVersion = (NP_GetPluginVersion_Func)
+  gExportedPluginFunctions.getPluginVersion = (NP_GetPluginVersion_Func)
     dlsym(gPlugin, "NP_GetPluginVersion");
-  gExportedFlashFunctions.getMIMEDescription = (NP_GetMIMEDescription_Func)
+  gExportedPluginFunctions.getMIMEDescription = (NP_GetMIMEDescription_Func)
     dlsym(gPlugin, "NP_GetMIMEDescription");
-  gExportedFlashFunctions.getValue = (NP_GetValue_Func)
+  gExportedPluginFunctions.getValue = (NP_GetValue_Func)
     dlsym(gPlugin, "NP_GetValue");
-  gExportedFlashFunctions.shutdown = (NP_Shutdown_Func)
+  gExportedPluginFunctions.shutdown = (NP_Shutdown_Func)
     dlsym(gPlugin, "NP_Shutdown");
 
   // set up our browser api wrappers
@@ -690,17 +956,18 @@ NP_Initialize(NPNetscapeFuncs* aBrowserFuncs,
       gBrowserFuncs->size);
 
   gPluginFuncs = new NPPluginFuncs;
-  return gExportedFlashFunctions.initialize(gWrappedBrowserFuncs, gPluginFuncs);
-
-  //return NPERR_NO_ERROR;
+  NPError e = gExportedPluginFunctions.initialize(gWrappedBrowserFuncs, 
+      gPluginFuncs);
+  log(" returning %s\n", NPErrorName(e));
+  return e;
 }
 
 NP_EXPORT(char*)
 NP_GetPluginVersion() {
   if (!gInitialized) initialize();
   log("NP_GetPluginVersion()\n");
-  if (gExportedFlashFunctions.getPluginVersion != NULL) {
-    char* v = gExportedFlashFunctions.getPluginVersion();
+  if (gExportedPluginFunctions.getPluginVersion != NULL) {
+    char* v = gExportedPluginFunctions.getPluginVersion();
     log(" returned %s\n", v);
     return v;
   } else {
@@ -713,7 +980,7 @@ NP_EXPORT(char*)
 NP_GetMIMEDescription() {
   if (!gInitialized) initialize();
   log("NP_GetGetMIMEDescription()\n");
-  char* md = gExportedFlashFunctions.getMIMEDescription();
+  char* md = gExportedPluginFunctions.getMIMEDescription();
   log(" returned %s\n", md);
   return md;
 }
@@ -721,33 +988,28 @@ NP_GetMIMEDescription() {
 NP_EXPORT(NPError)
 NP_GetValue(void* future, NPPVariable aVariable, void* aValue) {
   if (!gInitialized) initialize();
-  log("NP_GetValue(%d)\n", aVariable);
-  NPError e = NPERR_NO_ERROR;
-  /*
-  if (aVariable == NPPVpluginNameString) {
-    *((char**)aValue) = (char*)NAME;
-  } else {
-  */
-    e = gExportedFlashFunctions.getValue(future, aVariable, aValue);
-    log("NP_GetValue returned %d\n", e);
-  /*}*/
+  log("NP_GetValue(%s)\n", NPPVariableName(aVariable));
+  NPError e = gExportedPluginFunctions.getValue(future, aVariable, aValue);
+  // FIXME: only print on success?
   switch (aVariable) {
     case NPPVpluginNameString:
-      log("NP_GetValue pluginName=%s\n", *(const char**)aValue);
+      log(" pluginName=%s\n", *(const char**)aValue);
       break;
     case NPPVpluginDescriptionString:
-      log("NP_GetValue pluginDescription=%s\n", *(const char**)aValue);
+      log(" pluginDescription=%s\n", *(const char**)aValue);
       break;
     case NPPVpluginWindowBool:
-      log("NP_GetValue pluginWindowBool=%d\n", *(bool*)aValue);
+      log(" pluginWindowBool=%d\n", *(bool*)aValue);
       break;
     case NPPVpluginTransparentBool:
-      log("NP_GetValue pluginTransparentBool=%d\n", *(bool*)aValue);
+      log(" pluginTransparentBool=%d\n", *(bool*)aValue);
       break;
     default:
       // we only print values we might care about
       break;
   }
+  log("NP_GetValue returned %s\n", NPErrorName(e));
+
   return e;
 }
 
@@ -755,6 +1017,8 @@ NP_EXPORT(NPError)
 NP_Shutdown()
 {
   log("NP_Shutdown()\n");
-  return NPERR_NO_ERROR;
+  NPError e = gExportedPluginFunctions.shutdown();
+  log(" returned %s\n", NPErrorName(e));
+  return e;
 }
 
