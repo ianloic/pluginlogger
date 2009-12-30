@@ -1,23 +1,17 @@
-/* flashliar 0.1, a plugin wrapper for Adobe Flash Player */
+/* pluginlogger 0.1, a logging plugin wrapper */
 
 /* system headers for useful things */
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* load the npapi headers */
 #include "nptypes.h"
 #include "npapi.h"
 #include "npfunctions.h"
 #include "npruntime.h"
-
-#define VERSION "0.1.0.0"
-#define MIME_DESCRIPTION "application/x-flash-liar:lie:Flash Liar"
-#define NAME "Flash Liar"
-#define DESCRIPTION "Tell me lies, tell me sweet little lies"
-
-/*#define FLASHPLAYER "/usr/lib/flashplugin-installer/libflashplayer.so"*/
-#define FLASHPLAYER "/home/ian/Projects/flashliar/libflashplayer.so"
 
 #define MIN(A,B) (A<B?A:B)
 
@@ -42,7 +36,7 @@ static NPNetscapeFuncs* gBrowserFuncs = NULL; // browser functions
 static NPNetscapeFuncs* gWrappedBrowserFuncs = NULL; // wrapped browser functions
 static NPPluginFuncs* gPluginFuncs = NULL; // plugin functions
 
-static void* gFlashPlugin = NULL;
+static void* gPlugin = NULL;
 static ExportedPluginFunctions gExportedFlashFunctions = { NULL };
 
 static FILE* gLogFile = NULL;
@@ -55,6 +49,35 @@ static void log(const char* format, ...) {
   va_end(argp);
   fflush(gLogFile);
 }
+
+/* helper to get the value of an NPIdentifier */
+class IdentifierWrapper {
+  private:
+    NPIdentifier mId;
+    char* mPrintable;
+  public:
+    IdentifierWrapper(NPIdentifier aId) 
+      : mId(aId), mPrintable(NULL) {};
+    const char* printable() {
+      if (mPrintable == NULL) {
+        if (gBrowserFuncs->identifierisstring(mId)) {
+          NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(mId);
+          mPrintable = strdup(utf8);
+          gBrowserFuncs->memfree(utf8);
+        } else {
+          int32_t intvalue = gBrowserFuncs->intfromidentifier(mId);
+          mPrintable = (char*) malloc(256);
+          snprintf(mPrintable, 256, "%d", intvalue);
+        }
+      }
+      return mPrintable;
+    }
+    ~IdentifierWrapper() {
+      if (mPrintable != NULL) {
+        free(mPrintable);
+      }
+    }
+};
 
 
 /* wrapped browser functions */
@@ -172,14 +195,14 @@ void wrap_NPN_ReloadPlugins (NPBool reloadPages) {
 void* wrap_NPN_GetJavaEnv () {
   log("NPN_GetJavaEnv()\n");
   void* r = gBrowserFuncs->getJavaEnv();
-  printf(" returned %p\n", r);
+  log(" returned %p\n", r);
   return r;
 }
 
 void* wrap_NPN_GetJavaPeer (NPP npp) {
   log("NPN_GetJavaPeer(npp=%p)\n", npp);
   void* r = gBrowserFuncs->getJavaPeer(npp);
-  printf(" returned %p\n", r);
+  log(" returned %p\n", r);
   return r;
 }
 
@@ -260,63 +283,68 @@ void wrap_NPN_ReleaseObject (NPObject *obj) {
   gBrowserFuncs->releaseobject(obj);
 }
 
-#define IDENT_STRING(identifier) (gBrowserFuncs->identifierisstring(identifier) ? \
-                                    gBrowserFuncs->utf8fromidentifier(identifier) : \
-                                      "(identifier is not string)")
-
 bool wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName, const NPVariant *args, uint32_t argCount, NPVariant *result) {
-  log("NPN_Invoke(npp=%p, obj=%p, methodName=%s args=%p, argCount=%d, result=%p)\n", npp, obj, IDENT_STRING(methodName), args, argCount, result);
+  log("NPN_Invoke(npp=%p, obj=%p, methodName=%s args=%p, argCount=%d, "
+      "result=%p)\n", npp, obj, IdentifierWrapper(methodName).printable(), 
+      args, argCount, result);
   bool r =  gBrowserFuncs->invoke(npp, obj, methodName, args, argCount, result);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
 bool wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args, uint32_t argCount, NPVariant *result) {
   log("NPN_InvokeDefault(npp=%p, obj=%p, args=%p, argCount=%d, result=%p)\n", npp, obj, args, argCount, result);
   bool r = gBrowserFuncs->invokeDefault(npp, obj, args, argCount, result);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
 bool wrap_NPN_Evaluate (NPP npp, NPObject *obj, NPString *script, NPVariant *result) {
   log("NPN_Evaluate(npp=%p, obj=%p, script=\"%s\", result=%p)\n", npp, obj, script->UTF8Characters, result);
   bool r = gBrowserFuncs->evaluate(npp, obj, script, result);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, NPVariant *result) {
-  log("NPN_GetProperty(npp=%p, obj=%p, propertyName=\"%s\", result=%p)\n", npp, obj, IDENT_STRING(propertyName), result);
+bool wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+    NPVariant *result) {
+  log("NPN_GetProperty(npp=%p, obj=%p, propertyName=\"%s\", result=%p)\n", 
+      npp, obj, IdentifierWrapper(propertyName).printable(), result);
   bool r = gBrowserFuncs->getproperty(npp, obj, propertyName, result);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
-bool wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, const NPVariant *value) {
-  log("NPN_SetProperty(npp=%p, obj=%p, propertyName=\"%s\", value=%p)\n", npp, obj, IDENT_STRING(propertyName), value);
+bool wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+    const NPVariant *value) {
+  log("NPN_SetProperty(npp=%p, obj=%p, propertyName=\"%s\", value=%p)\n", 
+      npp, obj, IdentifierWrapper(propertyName).printable(), value);
   bool r = gBrowserFuncs->setproperty(npp, obj, propertyName, value);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
 bool wrap_NPN_RemoveProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
-  log("NPN_RemoveProperty(npp=%p, obj=%p, properyName=\"%s\")\n", npp, obj, IDENT_STRING(propertyName));
+  log("NPN_RemoveProperty(npp=%p, obj=%p, properyName=\"%s\")\n", 
+      npp, obj, IdentifierWrapper(propertyName).printable());
   bool r = gBrowserFuncs->removeproperty(npp, obj, propertyName);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
 bool wrap_NPN_HasProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
-  log("NPN_HasProperty(npp=%p, obj=%p, propertyName=\"%s\")\n", npp, obj, IDENT_STRING(propertyName));
+  log("NPN_HasProperty(npp=%p, obj=%p, propertyName=\"%s\")\n", 
+      npp, obj, IdentifierWrapper(propertyName).printable());
   bool r = gBrowserFuncs->hasproperty(npp, obj, propertyName);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
 bool wrap_NPN_HasMethod (NPP npp, NPObject *obj, NPIdentifier propertyName) {
-  log("NPN_HasMethod(npp=%p, obj=%p, propertyName=\"%s\")\n", npp, obj, IDENT_STRING(propertyName));
+  log("NPN_HasMethod(npp=%p, obj=%p, propertyName=\"%s\")\n", 
+      npp, obj, IdentifierWrapper(propertyName).printable());
   bool r = gBrowserFuncs->hasmethod(npp, obj, propertyName);
-  printf(" returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
@@ -435,7 +463,7 @@ wrap_NPP_New(NPMIMEType   pluginType,
   }
   NPError e = gPluginFuncs->newp(pluginType, instance, mode, 
       argc, argn, argv, saved);
-  log(" flash returned %d\n", e);
+  log(" returned %d\n", e);
   return e;
 }
 
@@ -444,7 +472,7 @@ NPError
 wrap_NPP_Destroy(NPP instance, NPSavedData** save) {
   log("NPP_Destroy(instance=%p, save=%p)\n", instance, save);
   NPError e = gPluginFuncs->destroy(instance, save);
-  log(" flash returned %d\n", e);
+  log(" returned %d\n", e);
   return e;
 }
 
@@ -452,7 +480,7 @@ NPError
 wrap_NPP_SetWindow(NPP instance, NPWindow* window) {
   log("NPP_SetWindow(instance=%p, window=%p)\n", instance, window);
   NPError e = gPluginFuncs->setwindow(instance, window);
-  log(" flash returned %d\n", e);
+  log(" returned %d\n", e);
   return e;
 };
 
@@ -462,7 +490,7 @@ wrap_NPP_NewStream(NPP instance, NPMIMEType type, NPStream* stream,
   log("NPP_NewStream(instance=%p, type=\"%s\", stream=%p, seekable=%d, "
       "stype=%p)\n", instance, type, stream, seekable, stype);
   NPError e = gPluginFuncs->newstream(instance, type, stream, seekable, stype);
-  log(" flash returned %d\n", e);
+  log(" returned %d\n", e);
   return e;
 }
 
@@ -470,7 +498,7 @@ NPError
 wrap_NPP_DestroyStream(NPP instance, NPStream* stream, NPReason reason) {
   log("NPP_DestroyStream(instance=%p, stream=%p, reason=%d)\n", instance, stream, reason);
   NPError e = gPluginFuncs->destroystream(instance, stream, reason);
-  log(" flash returned %d\n", e);
+  log(" returned %d\n", e);
   return e;
 };
 
@@ -484,7 +512,7 @@ int32_t
 wrap_NPP_WriteReady(NPP instance, NPStream* stream) {
   log("NPP_WriteReady(instance=%p, stream=%p)\n", instance, stream);
   int32_t r = gPluginFuncs->writeready(instance, stream);
-  log(" flash returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
@@ -492,7 +520,7 @@ int32_t
 wrap_NPP_Write(NPP instance, NPStream* stream, int32_t offset, int32_t len, void* buffer) {
   log("NPP_Write(instance=%p, stream=%p, offset=%d, len=%d, buffer=%p)\n", instance, stream, offset, len, buffer);
   int32_t r = gPluginFuncs->write(instance, stream, offset, len, buffer);
-  log(" flash returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
@@ -507,7 +535,7 @@ int16_t
 wrap_NPP_HandleEvent(NPP instance, void* event) {
   log("NPP_HandleEvent(instance=%p, event=%p)\n", instance, event);
   int16_t r = gPluginFuncs->event(instance, event);
-  log(" flash returned %d\n", r);
+  log(" returned %d\n", r);
   return r;
 }
 
@@ -536,28 +564,28 @@ wrap_NPP_SetValue(NPP instance, NPNVariable variable, void* ret) {
 static void
 initialize() {
   // initialize the plugin when it's first called
-  gLogFile = fopen("/tmp/liar.log", "w");
+  gLogFile = fopen(LOGFILE, "w");
 
-  log("loading the flash player so\n");
+  log("loading the plugin so from: %s\n", PLUGIN);
 
-  // load the flash player shared object
-  gFlashPlugin = dlopen(FLASHPLAYER, RTLD_LOCAL);
-  log("loaded the flash player as %p\n", gFlashPlugin);
-  if (gFlashPlugin == NULL) {
+  // load the plugin shared object
+  gPlugin = dlopen(PLUGIN, RTLD_LOCAL);
+  log("loaded the plugin as %p\n", gPlugin);
+  if (gPlugin == NULL) {
     log("dlerror returns: %s\n", dlerror());
   }
 
-  // get handles to all of the global function pointers from the flash plugin
+  // get handles to all of the global function pointers from the plugin
   gExportedFlashFunctions.initialize = (NP_Initialize_Func)
-    dlsym(gFlashPlugin, "NP_Initialize");
+    dlsym(gPlugin, "NP_Initialize");
   gExportedFlashFunctions.getPluginVersion = (NP_GetPluginVersion_Func)
-    dlsym(gFlashPlugin, "NP_GetPluginVersion");
+    dlsym(gPlugin, "NP_GetPluginVersion");
   gExportedFlashFunctions.getMIMEDescription = (NP_GetMIMEDescription_Func)
-    dlsym(gFlashPlugin, "NP_GetMIMEDescription");
+    dlsym(gPlugin, "NP_GetMIMEDescription");
   gExportedFlashFunctions.getValue = (NP_GetValue_Func)
-    dlsym(gFlashPlugin, "NP_GetValue");
+    dlsym(gPlugin, "NP_GetValue");
   gExportedFlashFunctions.shutdown = (NP_Shutdown_Func)
-    dlsym(gFlashPlugin, "NP_Shutdown");
+    dlsym(gPlugin, "NP_Shutdown");
 
   // set up our browser api wrappers
   gWrappedBrowserFuncs = new NPNetscapeFuncs;
@@ -671,7 +699,14 @@ NP_EXPORT(char*)
 NP_GetPluginVersion() {
   if (!gInitialized) initialize();
   log("NP_GetPluginVersion()\n");
-  return (char*)VERSION;
+  if (gExportedFlashFunctions.getPluginVersion != NULL) {
+    char* v = gExportedFlashFunctions.getPluginVersion();
+    log(" returned %s\n", v);
+    return v;
+  } else {
+    log(" not defined on plugin, returning 1.0\n");
+    return (char*)"1.0";
+  }
 }
 
 NP_EXPORT(char*)
@@ -679,7 +714,7 @@ NP_GetMIMEDescription() {
   if (!gInitialized) initialize();
   log("NP_GetGetMIMEDescription()\n");
   char* md = gExportedFlashFunctions.getMIMEDescription();
-  log(" flash returned %s\n", md);
+  log(" returned %s\n", md);
   return md;
 }
 
@@ -694,7 +729,7 @@ NP_GetValue(void* future, NPPVariable aVariable, void* aValue) {
   } else {
   */
     e = gExportedFlashFunctions.getValue(future, aVariable, aValue);
-    log("NP_GetValue flash returned %d\n", e);
+    log("NP_GetValue returned %d\n", e);
   /*}*/
   switch (aVariable) {
     case NPPVpluginNameString:

@@ -1,16 +1,19 @@
-# Makefile for flashliar
+# Makefile for pluginlogger
 
 
-CXXFLAGS=-DXP_UNIX -Wall -Werror -g
+CXXFLAGS=-DXP_UNIX -Wall -Werror -g -DPLUGIN=\"/home/ian/Projects/flashliar/libflashplayer.so\" -DLOGFILE=\"/tmp/plugin.log\"
+
 
 all: install
 
 install: plugin
-	cp flashliar.so ~/.mozilla/plugins/
+	cp pluginlogger.so ~/.mozilla/plugins/
 
-plugin: flashliar.so
+plugin: pluginlogger.so
 
-flashliar.o: flashliar.cpp
+pluginlogger.o: pluginlogger.cpp
 
-flashliar.so: flashliar.o
+pluginlogger.so: pluginlogger.o
 	${CC} -shared -o $@ $< ${LDFLAGS}
+
+clean: rm -f pluginlogger.so pluginlogger.o
