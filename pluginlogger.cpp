@@ -1,4 +1,4 @@
-/* pluginlogger 0.1, a logging plugin wrapper 
+/* pluginlogger 0.1, a logging plugin wrapper
  * Copyright 2009 Ian McKellar <http://ian.mckellar.org/>
  * */
 
@@ -71,13 +71,13 @@ class Log {
         gLogFile = fopen(LOGFILE, "w");
       }
     }
-    void operator()(const char* format, ...) 
+    void operator()(const char* format, ...)
       __attribute__((__format__ (__printf__, 2, 3)));
 };
 FILE* Log::gLogFile = NULL;
 int Log::gSerialNumber = 0;
 
-void 
+void
 Log::operator()(const char* format, ...) {
   fprintf(gLogFile, "[%05d] ", mSerialNumber);
   va_list argp;
@@ -180,7 +180,7 @@ Printable(const NPVariant* aVariants, uint32_t aCount, bool aParens=false) {
 }
 
 /* helper to get the printable name of an NPNVariable */
-const char* 
+const char*
 NPNVariableName(NPNVariable variable) {
   switch (variable) {
     case NPNVxDisplay: return "NPNVxDisplay"; break;
@@ -203,7 +203,7 @@ NPNVariableName(NPNVariable variable) {
 }
 
 /* helper to get the printable name of an NPPVariable */
-const char* 
+const char*
 NPPVariableName(NPPVariable variable) {
   switch (variable) {
     case NPPVpluginNameString: return "NPPVpluginNameString"; break;
@@ -217,8 +217,8 @@ NPPVariableName(NPPVariable variable) {
     case NPPVpluginScriptableIID: return "NPPVpluginScriptableIID"; break;
     case NPPVjavascriptPushCallerBool: return "NPPVjavascriptPushCallerBool"; break;
     case NPPVpluginKeepLibraryInMemory: return "NPPVpluginKeepLibraryInMemory"; break;
-    case NPPVpluginNeedsXEmbed        : return "NPPVpluginNeedsXEmbed        "; break;
-    case NPPVpluginScriptableNPObject : return "NPPVpluginScriptableNPObject "; break;
+    case NPPVpluginNeedsXEmbed        : return "NPPVpluginNeedsXEmbed"; break;
+    case NPPVpluginScriptableNPObject : return "NPPVpluginScriptableNPObject"; break;
     case NPPVformValue: return "NPPVformValue"; break;
     case NPPVpluginUrlRequestsDisplayedBool: return "NPPVpluginUrlRequestsDisplayedBool"; break;
     case NPPVpluginWantsAllNetworkStreams: return "NPPVpluginWantsAllNetworkStreams"; break;
@@ -262,7 +262,7 @@ class NPObjectTracker {
     NPObjectOrigin mOrigin;
     std::string mPath;
     std::string mPrintable;
-    NPObjectTracker(const NPObject* aObject, NPObjectOrigin aOrigin, 
+    NPObjectTracker(const NPObject* aObject, NPObjectOrigin aOrigin,
         std::string aPath)
         : mObject(aObject), mOrigin(aOrigin), mPath(aPath) {
       updatePrintable();
@@ -282,7 +282,7 @@ class NPObjectTracker {
       updatePrintable();
     }
   public:
-    static NPObjectTracker* getTracker(const NPObject* aObject, 
+    static NPObjectTracker* getTracker(const NPObject* aObject,
         NPObjectOrigin aOrigin = ORIGIN_UNKNOWN, std::string aPath="") {
       NPObjectMap::iterator i = byObject.find(aObject);
       if (i == byObject.end()) {
@@ -302,7 +302,7 @@ class NPObjectTracker {
     const NPObject* getObject() const { return mObject; }
     const char* c_str() const { return mPrintable.c_str(); }
 
-    NPObjectTracker* trackChild(NPObject* aChildObject, 
+    NPObjectTracker* trackChild(NPObject* aChildObject,
         std::string aRelationship) {
       return getTracker(aChildObject, mOrigin, mPath + aRelationship);
     }
@@ -387,7 +387,7 @@ wrap_NPClass_deallocate(NPObject* obj) {
   return;
 }
 
-void 
+void
 wrap_NPClass_invalidate(NPObject* obj) {
   Log log;
   log("NPClass.deallocate(obj=%s)\n", NPObjectTracker::c_str(obj));
@@ -400,7 +400,7 @@ wrap_NPClass_invalidate(NPObject* obj) {
 bool
 wrap_NPClass_hasMethod(NPObject* obj, NPIdentifier name) {
   Log log;
-  log("NPClass.hasMethod(obj=%s, name=%s)\n", 
+  log("NPClass.hasMethod(obj=%s, name=%s)\n",
       NPObjectTracker::c_str(obj), Printable(name).c_str());
 
   bool r = NPClassTracker::getClass(obj->_class)->hasMethod(obj, name);
@@ -410,20 +410,20 @@ wrap_NPClass_hasMethod(NPObject* obj, NPIdentifier name) {
 }
 
 bool
-wrap_NPClass_invoke(NPObject* obj, NPIdentifier name, 
+wrap_NPClass_invoke(NPObject* obj, NPIdentifier name,
     const NPVariant *args, uint32_t argCount, NPVariant *result) {
   Log log;
   log("NPClass.invoke(obj=%s, name=%s, args=%s)\n",
       NPObjectTracker::c_str(obj), Printable(name).c_str(),
       Printable(args, argCount, true).c_str());
-  
-  bool r = NPClassTracker::getClass(obj->_class)->invoke(obj, name, 
+
+  bool r = NPClassTracker::getClass(obj->_class)->invoke(obj, name,
       args, argCount, result);
 
   if (r) {
     if (NPVARIANT_IS_OBJECT(*result)) {
       NPObjectTracker::getTracker(obj)->trackChild(
-          NPVARIANT_TO_OBJECT(*result), std::string(".") + 
+          NPVARIANT_TO_OBJECT(*result), std::string(".") +
           Printable(name) + Printable(args, argCount, true));
     }
 
@@ -435,7 +435,7 @@ wrap_NPClass_invoke(NPObject* obj, NPIdentifier name,
 }
 
 bool
-wrap_NPClass_invokeDefault(NPObject* obj, const NPVariant *args, 
+wrap_NPClass_invokeDefault(NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   Log log;
   log("NPClass.invokeDefault(obj=%s, args=%s)\n",
@@ -453,11 +453,11 @@ wrap_NPClass_invokeDefault(NPObject* obj, const NPVariant *args,
   } else {
     log(" returned false\n");
   }
-  
+
   return r;
 }
 
-bool 
+bool
 wrap_NPClass_hasProperty(NPObject *obj, NPIdentifier name) {
   Log log;
 
@@ -470,22 +470,22 @@ wrap_NPClass_hasProperty(NPObject *obj, NPIdentifier name) {
   return r;
 }
 
-bool 
-wrap_NPClass_getProperty(NPObject *obj, NPIdentifier name, 
+bool
+wrap_NPClass_getProperty(NPObject *obj, NPIdentifier name,
     NPVariant *result) {
   Log log;
 
   log("NPClass.getProperty(obj=%s, name=%s)\n",
       NPObjectTracker::c_str(obj), Printable(name).c_str());
 
-  bool r = NPClassTracker::getClass(obj->_class)->getProperty(obj, name, 
+  bool r = NPClassTracker::getClass(obj->_class)->getProperty(obj, name,
       result);
 
   if (r) {
     // if the return value is an object we want to track that
     if (NPVARIANT_IS_OBJECT(*result)) {
       NPObjectTracker::getTracker(obj)->trackChild(
-          NPVARIANT_TO_OBJECT(*result), 
+          NPVARIANT_TO_OBJECT(*result),
           std::string(".")+Printable(name));
     }
     log(" returned true, result=%s\n", Printable(result).c_str());
@@ -495,25 +495,25 @@ wrap_NPClass_getProperty(NPObject *obj, NPIdentifier name,
   return r;
 }
 
-bool 
-wrap_NPClass_setProperty (NPObject *obj, NPIdentifier name, 
+bool
+wrap_NPClass_setProperty(NPObject *obj, NPIdentifier name,
     const NPVariant *value) {
   Log log;
 
-  log("NPClass.setProperty(obj=%s, name=%s, value=%p)\n", 
-      NPObjectTracker::c_str(obj), 
-      Printable(name).c_str(), 
+  log("NPClass.setProperty(obj=%s, name=%s, value=%p)\n",
+      NPObjectTracker::c_str(obj),
+      Printable(name).c_str(),
       Printable(value).c_str());
 
-  bool r = 
+  bool r =
     NPClassTracker::getClass(obj->_class)->setProperty(obj, name, value);
 
   log(" returned %s\n", boolStr(r));
   return r;
 }
 
-bool 
-wrap_NPClass_removeProperty (NPObject *obj, NPIdentifier name) {
+bool
+wrap_NPClass_removeProperty(NPObject *obj, NPIdentifier name) {
   Log log;
 
   log("NPClass.removeProperty(obj=%s, name=%s)\n",
@@ -525,8 +525,8 @@ wrap_NPClass_removeProperty (NPObject *obj, NPIdentifier name) {
   return r;
 }
 
-bool 
-wrap_NPClass_enumerate (NPObject *obj, NPIdentifier **value, 
+bool
+wrap_NPClass_enumerate(NPObject *obj, NPIdentifier **value,
     uint32_t *count) {
   Log log;
 
@@ -543,8 +543,8 @@ wrap_NPClass_enumerate (NPObject *obj, NPIdentifier **value,
   return r;
 }
 
-bool 
-wrap_NPClass_construct (NPObject* obj, const NPVariant *args, 
+bool
+wrap_NPClass_construct(NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   Log log;
 
@@ -553,12 +553,12 @@ wrap_NPClass_construct (NPObject* obj, const NPVariant *args,
     log("  arg[%d] = %s\n", i, Printable(&args[i]).c_str());
   }
 
-  bool r = NPClassTracker::getClass(obj->_class)->construct(obj, 
+  bool r = NPClassTracker::getClass(obj->_class)->construct(obj,
       args, argCount, result);
 
   if (r) {
     if (NPVARIANT_IS_OBJECT(*result)) {
-      std::string path = std::string("([constructor]") + 
+      std::string path = std::string("([constructor]") +
         Printable(args, argCount) + std::string(")");
       NPObjectTracker::getTracker(obj)->trackChild(
           NPVARIANT_TO_OBJECT(*result), path);
@@ -571,7 +571,7 @@ wrap_NPClass_construct (NPObject* obj, const NPVariant *args,
   return r;
 }
 
-NPClass* 
+NPClass*
 NPClassTracker::wrap(NPClass* aClass) {
   if (hasWrapper(aClass)) {
     return getWrapper(aClass);
@@ -600,74 +600,74 @@ NPClassTracker::wrap(NPClass* aClass) {
 
 
 /* wrapped browser functions */
-NPError 
-wrap_NPN_GetValue (NPP npp, NPNVariable variable, void *ret_value) {
+NPError
+wrap_NPN_GetValue(NPP npp, NPNVariable variable, void *ret_value) {
   Log log;
 
-  log("NPN_GetValue(npp=%p, variable=%s, value=%p)\n", 
+  log("NPN_GetValue(npp=%p, variable=%s, value=%p)\n",
       npp, NPNVariableName(variable), ret_value);
   NPError e = gBrowserFuncs->getvalue(npp, variable, ret_value);
   if (e == NPERR_NO_ERROR) {
     switch(variable) {
-      case NPNVxDisplay: 
+      case NPNVxDisplay:
         log("  NPNVxDisplay = %p\n", *(void**)ret_value);
         break;
-      case NPNVxtAppContext: 
+      case NPNVxtAppContext:
         log("  NPNVxtAppContext = %p\n", *(void**)ret_value);
         break;
-      case NPNVnetscapeWindow: 
+      case NPNVnetscapeWindow:
         log("  NPNVnetscapeWindow = %p\n", *(void**)ret_value);
         break;
-      case NPNVjavascriptEnabledBool: 
-        log("  NPNVjavascriptEnabledBool = %s\n", 
+      case NPNVjavascriptEnabledBool:
+        log("  NPNVjavascriptEnabledBool = %s\n",
             boolStr(*(bool*)ret_value));
         break;
-      case NPNVasdEnabledBool: 
-        log("  NPNVasdEnabledBool = %s\n", 
+      case NPNVasdEnabledBool:
+        log("  NPNVasdEnabledBool = %s\n",
             (*(bool*)ret_value)?"true":"false");
         break;
-      case NPNVisOfflineBool: 
-        log("  NPNVisOfflineBool = %s\n", 
+      case NPNVisOfflineBool:
+        log("  NPNVisOfflineBool = %s\n",
             (*(bool*)ret_value)?"true":"false");
         break;
-      case NPNVserviceManager: 
+      case NPNVserviceManager:
         log("  NPNVserviceManager = %p\n", *(void**)ret_value);
         break;
-      case NPNVDOMElement: 
+      case NPNVDOMElement:
         log("  NPNVDOMElement = %p\n", *(void**)ret_value);
         break;
-      case NPNVDOMWindow: 
+      case NPNVDOMWindow:
         log("  NPNVDOMWindow = %p\n", *(void**)ret_value);
         break;
-      case NPNVToolkit: 
+      case NPNVToolkit:
         log("  NPNVToolkit = %p\n", *(void**)ret_value);
         break;
-      case NPNVSupportsXEmbedBool: 
-        log("  NPNVSupportsXEmbedBool = %s\n", 
+      case NPNVSupportsXEmbedBool:
+        log("  NPNVSupportsXEmbedBool = %s\n",
             (*(bool*)ret_value)?"true":"false");
         break;
-      case NPNVWindowNPObject: 
+      case NPNVWindowNPObject:
         {
         NPObject* obj = *(NPObject**)ret_value;
-        NPObjectTracker* tracker = 
+        NPObjectTracker* tracker =
           NPObjectTracker::getTracker(obj, ORIGIN_BROWSER, "window");
         log("  NPNVWindowNPObject = %s\n", tracker->c_str());
         }
         break;
-      case NPNVPluginElementNPObject: 
+      case NPNVPluginElementNPObject:
         {
         NPObject* obj = *(NPObject**)ret_value;
-        NPObjectTracker* tracker = 
+        NPObjectTracker* tracker =
           NPObjectTracker::getTracker(obj, ORIGIN_BROWSER, "plugin");
         log("  NPNVPluginElementNPObject = %s\n", tracker->c_str());
         }
         break;
-      case NPNVSupportsWindowless: 
-        log("  NPNVSupportsWindowless = %s\n", 
+      case NPNVSupportsWindowless:
+        log("  NPNVSupportsWindowless = %s\n",
             (*(bool*)ret_value)?"true":"false");
         break;
-      case NPNVprivateModeBool: 
-        log("  NPNVprivateModeBool = %s\n", 
+      case NPNVprivateModeBool:
+        log("  NPNVprivateModeBool = %s\n",
             (*(bool*)ret_value)?"true":"false");
         break;
     }
@@ -676,45 +676,45 @@ wrap_NPN_GetValue (NPP npp, NPNVariable variable, void *ret_value) {
   return e;
 }
 
-NPError 
-wrap_NPN_SetValue (NPP npp, NPPVariable variable, void *value) {
+NPError
+wrap_NPN_SetValue(NPP npp, NPPVariable variable, void *value) {
   Log log;
 
-  log("NPN_SetValue(npp=%p, variable=%s, value=%p)\n", 
+  log("NPN_SetValue(npp=%p, variable=%s, value=%p)\n",
       npp, NPPVariableName(variable), value);
   NPError e = gBrowserFuncs->setvalue(npp, variable, value);
   log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError 
-wrap_NPN_GetURLNotify (NPP npp, const char* url, const char* window, 
+NPError
+wrap_NPN_GetURLNotify(NPP npp, const char* url, const char* window,
     void* notifyData) {
   Log log;
 
-  log("NPN_GetURLNotify(npp=%p, url=\"%s\", window=\"%s\", notifydata=%p)\n", 
+  log("NPN_GetURLNotify(npp=%p, url=\"%s\", window=\"%s\", notifydata=%p)\n",
       npp, url, window, notifyData);
   NPError e = gBrowserFuncs->geturlnotify(npp, url, window, notifyData);
   log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError 
-wrap_NPN_PostURLNotify (NPP npp, const char* url, const char* window, 
+NPError
+wrap_NPN_PostURLNotify(NPP npp, const char* url, const char* window,
     uint32_t len, const char* buf, NPBool file, void* notifyData) {
   Log log;
 
   log("NPN_PostURLNotify(npp=%p, url=\"%s\", window=\"%s\", len=%d, buf=%p, "
-      "file=%d, notifyData=%p)\n", 
+      "file=%d, notifyData=%p)\n",
       npp, url, window, len, buf, file, notifyData);
-  NPError e = gBrowserFuncs->posturlnotify(npp, url, window, len, buf, file, 
+  NPError e = gBrowserFuncs->posturlnotify(npp, url, window, len, buf, file,
       notifyData);
   log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError 
-wrap_NPN_GetURL (NPP npp, const char* url, const char* window) {
+NPError
+wrap_NPN_GetURL(NPP npp, const char* url, const char* window) {
   Log log;
 
   log("NPN_GetURL(npp=%p, url=\"%s\", window=\"%s\")\n", npp, url, window);
@@ -723,8 +723,8 @@ wrap_NPN_GetURL (NPP npp, const char* url, const char* window) {
   return e;
 }
 
-NPError 
-wrap_NPN_PostURL (NPP npp, const char* url, const char* window, 
+NPError
+wrap_NPN_PostURL(NPP npp, const char* url, const char* window,
     uint32_t len, const char* buf, NPBool file) {
   Log log;
 
@@ -735,55 +735,55 @@ wrap_NPN_PostURL (NPP npp, const char* url, const char* window,
   return e;
 }
 
-NPError 
-wrap_NPN_RequestRead (NPStream* stream, NPByteRange* rangeList) {
+NPError
+wrap_NPN_RequestRead(NPStream* stream, NPByteRange* rangeList) {
   Log log;
 
   log("NPN_RequestRead(stream=%p)\n", stream);
   for (NPByteRange* r=rangeList; r!=NULL; r=r->next) {
-    log("  range offset=%d length=%d\n", r->offset, r->length);    
+    log("  range offset=%d length=%d\n", r->offset, r->length);
   }
   NPError e = gBrowserFuncs->requestread(stream, rangeList);
   log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-NPError 
-wrap_NPN_NewStream (NPP npp, NPMIMEType type, const char* window, 
+NPError
+wrap_NPN_NewStream(NPP npp, NPMIMEType type, const char* window,
     NPStream** stream) {
   Log log;
 
-  log("NPN_NewStream(npp=%p, type=\"%s\", window=\"%s\", stream=%p)\n", 
+  log("NPN_NewStream(npp=%p, type=\"%s\", window=\"%s\", stream=%p)\n",
       npp, type, window, stream);
   NPError e = gBrowserFuncs->newstream(npp, type, window, stream);
   log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-int32_t 
-wrap_NPN_Write (NPP npp, NPStream* stream, int32_t len, void* buffer) {
+int32_t
+wrap_NPN_Write(NPP npp, NPStream* stream, int32_t len, void* buffer) {
   Log log;
 
-  log("NPN_Write(npp=%p, stream=%p, len=%d, buffer=%p\n", 
+  log("NPN_Write(npp=%p, stream=%p, len=%d, buffer=%p\n",
       npp, stream, len, buffer);
   int32_t r = gBrowserFuncs->write(npp, stream, len, buffer);
   log(" returned %d\n", r);
   return r;
 }
 
-NPError 
-wrap_NPN_DestroyStream (NPP npp, NPStream* stream, NPReason reason) {
+NPError
+wrap_NPN_DestroyStream(NPP npp, NPStream* stream, NPReason reason) {
   Log log;
 
-  log("NPN_DestroyStream(npp=%p, stream=%p, reason=%d)\n", 
+  log("NPN_DestroyStream(npp=%p, stream=%p, reason=%d)\n",
       npp, stream, reason);
   NPError e = gBrowserFuncs->destroystream(npp, stream, reason);
   log(" returned %s\n", NPErrorName(e));
   return e;
 }
 
-void 
-wrap_NPN_Status (NPP npp, const char* message) {
+void
+wrap_NPN_Status(NPP npp, const char* message) {
   Log log;
 
   log("NPN_Status(npp=%p, message=\"%s\"\n", npp, message);
@@ -791,8 +791,8 @@ wrap_NPN_Status (NPP npp, const char* message) {
   return;
 }
 
-const char* 
-wrap_NPN_UserAgent (NPP npp) {
+const char*
+wrap_NPN_UserAgent(NPP npp) {
   Log log;
 
   log("NPN_UserAgent(npp=%p)\n", npp);
@@ -801,8 +801,8 @@ wrap_NPN_UserAgent (NPP npp) {
   return r;
 }
 
-void* 
-wrap_NPN_MemAlloc (uint32_t size) {
+void*
+wrap_NPN_MemAlloc(uint32_t size) {
   Log log;
 
   log("NPN_MemAlloc(size=%d)\n", size);
@@ -811,8 +811,8 @@ wrap_NPN_MemAlloc (uint32_t size) {
   return r;
 }
 
-void 
-wrap_NPN_MemFree (void* ptr) {
+void
+wrap_NPN_MemFree(void* ptr) {
   Log log;
 
   log("NPN_MemFree(ptr=%p)\n", ptr);
@@ -820,8 +820,8 @@ wrap_NPN_MemFree (void* ptr) {
   return;
 }
 
-uint32_t 
-wrap_NPN_MemFlush (uint32_t size) {
+uint32_t
+wrap_NPN_MemFlush(uint32_t size) {
   Log log;
 
   log("NPN_MemFlush(size=%d)\n", size);
@@ -830,16 +830,16 @@ wrap_NPN_MemFlush (uint32_t size) {
   return r;
 }
 
-void 
-wrap_NPN_ReloadPlugins (NPBool reloadPages) {
+void
+wrap_NPN_ReloadPlugins(NPBool reloadPages) {
   Log log;
 
   log("NPN_ReloadPlugins(reloadPages=%d)\n", reloadPages);
   gBrowserFuncs->reloadplugins(reloadPages);
 }
 
-void* 
-wrap_NPN_GetJavaEnv () {
+void*
+wrap_NPN_GetJavaEnv() {
   Log log;
 
   log("NPN_GetJavaEnv()\n");
@@ -848,8 +848,8 @@ wrap_NPN_GetJavaEnv () {
   return r;
 }
 
-void* 
-wrap_NPN_GetJavaPeer (NPP npp) {
+void*
+wrap_NPN_GetJavaPeer(NPP npp) {
   Log log;
 
   log("NPN_GetJavaPeer(npp=%p)\n", npp);
@@ -858,8 +858,8 @@ wrap_NPN_GetJavaPeer (NPP npp) {
   return r;
 }
 
-void 
-wrap_NPN_InvalidateRect (NPP npp, NPRect *rect) {
+void
+wrap_NPN_InvalidateRect(NPP npp, NPRect *rect) {
   Log log;
 
   log("NPN_InvalidateRect(npp=%p rect={top=%d, left=%d, bottom=%d, "
@@ -868,8 +868,8 @@ wrap_NPN_InvalidateRect (NPP npp, NPRect *rect) {
   return;
 }
 
-void 
-wrap_NPN_InvalidateRegion (NPP npp, NPRegion region) {
+void
+wrap_NPN_InvalidateRegion(NPP npp, NPRegion region) {
   Log log;
 
   log("NPN_InvalidateRegion(npp=%p, region=%p\n", npp, region);
@@ -877,8 +877,8 @@ wrap_NPN_InvalidateRegion (NPP npp, NPRegion region) {
   return;
 }
 
-void 
-wrap_NPN_ForceRedraw (NPP npp) {
+void
+wrap_NPN_ForceRedraw(NPP npp) {
   Log log;
 
   log("NPN_ForceRedraw(npp=%p)\n", npp);
@@ -886,8 +886,8 @@ wrap_NPN_ForceRedraw (NPP npp) {
   return;
 }
 
-NPIdentifier 
-wrap_NPN_GetStringIdentifier (const NPUTF8* name) {
+NPIdentifier
+wrap_NPN_GetStringIdentifier(const NPUTF8* name) {
   Log log;
 
   log("NPN_GetStringIdentifier(name=\"%s\")\n", name);
@@ -896,8 +896,8 @@ wrap_NPN_GetStringIdentifier (const NPUTF8* name) {
   return r;
 }
 
-void 
-wrap_NPN_GetStringIdentifiers (const NPUTF8** names, int32_t nameCount, 
+void
+wrap_NPN_GetStringIdentifiers(const NPUTF8** names, int32_t nameCount,
     NPIdentifier* identifiers) {
   Log log;
 
@@ -909,8 +909,8 @@ wrap_NPN_GetStringIdentifiers (const NPUTF8** names, int32_t nameCount,
   }
 }
 
-NPIdentifier 
-wrap_NPN_GetIntIdentifier (int32_t intid) {
+NPIdentifier
+wrap_NPN_GetIntIdentifier(int32_t intid) {
   Log log;
 
   log("NPN_GetIntIdentifier(intid=%d)\n", intid);
@@ -919,8 +919,8 @@ wrap_NPN_GetIntIdentifier (int32_t intid) {
   return r;
 }
 
-bool 
-wrap_NPN_IdentifierIsString (NPIdentifier identifier) {
+bool
+wrap_NPN_IdentifierIsString(NPIdentifier identifier) {
   Log log;
 
   log("NPN_IdentifierIsString(identifier=%p)\n", identifier);
@@ -929,7 +929,7 @@ wrap_NPN_IdentifierIsString (NPIdentifier identifier) {
   return r;
 }
 
-NPUTF8* 
+NPUTF8*
 wrap_NPN_UTF8FromIdentifier (NPIdentifier identifier) {
   Log log;
 
@@ -939,8 +939,8 @@ wrap_NPN_UTF8FromIdentifier (NPIdentifier identifier) {
   return r;
 }
 
-int32_t 
-wrap_NPN_IntFromIdentifier (NPIdentifier identifier) {
+int32_t
+wrap_NPN_IntFromIdentifier(NPIdentifier identifier) {
   Log log;
 
   log("NPN_IntFromIdentifier(identifier=%p)\n", identifier);
@@ -949,12 +949,12 @@ wrap_NPN_IntFromIdentifier (NPIdentifier identifier) {
   return r;
 }
 
-NPObject* 
-wrap_NPN_CreateObject (NPP npp, NPClass *aClass) {
+NPObject*
+wrap_NPN_CreateObject(NPP npp, NPClass *aClass) {
   Log log;
 
   log("NPN_CreateObject(npp=%p, class=%p)\n", npp, aClass);
-  NPObject* r = gBrowserFuncs->createobject(npp, 
+  NPObject* r = gBrowserFuncs->createobject(npp,
       NPClassTracker::wrap(aClass));
   // the plugin is requesting that the browser create an object
   // so I think it belongs on the plugin side. we will see...
@@ -963,8 +963,8 @@ wrap_NPN_CreateObject (NPP npp, NPClass *aClass) {
   return r;
 }
 
-NPObject* 
-wrap_NPN_RetainObject (NPObject *obj) {
+NPObject*
+wrap_NPN_RetainObject(NPObject *obj) {
   Log log;
 
   log("NPN_RetainObject(obj=%s)\n", NPObjectTracker::c_str(obj));
@@ -973,8 +973,8 @@ wrap_NPN_RetainObject (NPObject *obj) {
   return r;
 }
 
-void 
-wrap_NPN_ReleaseObject (NPObject *obj) {
+void
+wrap_NPN_ReleaseObject(NPObject *obj) {
   Log log;
 
   log("NPN_ReleaseObject(obj=%p)\n", NPObjectTracker::c_str(obj));
@@ -983,16 +983,16 @@ wrap_NPN_ReleaseObject (NPObject *obj) {
   return;
 }
 
-bool 
-wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName, 
+bool
+wrap_NPN_Invoke(NPP npp, NPObject* obj, NPIdentifier methodName,
     const NPVariant *args, uint32_t argCount, NPVariant *result) {
   Log log;
 
-  log("NPN_Invoke(npp=%p, obj=%s, methodName=%s, args=%s)\n", npp, 
+  log("NPN_Invoke(npp=%p, obj=%s, methodName=%s, args=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(methodName).c_str(),
       Printable(args, argCount, true).c_str());
 
-  bool r = gBrowserFuncs->invoke(npp, obj, methodName, args, argCount, 
+  bool r = gBrowserFuncs->invoke(npp, obj, methodName, args, argCount,
       result);
   if (r) {
     log(" returned true, result=%s\n", Printable(result).c_str());
@@ -1002,12 +1002,12 @@ wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName,
   return r;
 }
 
-bool 
-wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args, 
+bool
+wrap_NPN_InvokeDefault(NPP npp, NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   Log log;
 
-  log("NPN_InvokeDefault(npp=%p, obj=%s, args=%s)\n", npp, 
+  log("NPN_InvokeDefault(npp=%p, obj=%s, args=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(args, argCount, true).c_str());
 
   bool r = gBrowserFuncs->invokeDefault(npp, obj, args, argCount, result);
@@ -1016,12 +1016,12 @@ wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args,
   return r;
 }
 
-bool 
-wrap_NPN_Evaluate (NPP npp, NPObject *obj, NPString *script, 
+bool
+wrap_NPN_Evaluate(NPP npp, NPObject *obj, NPString *script,
     NPVariant *result) {
   Log log;
 
-  log("NPN_Evaluate(npp=%p, obj=%s, script=%s)\n", npp, 
+  log("NPN_Evaluate(npp=%p, obj=%s, script=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(script).c_str());
   bool r = gBrowserFuncs->evaluate(npp, obj, script, result);
   // FIXME: if the return value is an object we want to track that
@@ -1029,12 +1029,12 @@ wrap_NPN_Evaluate (NPP npp, NPObject *obj, NPString *script,
   return r;
 }
 
-bool 
-wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+bool
+wrap_NPN_GetProperty(NPP npp, NPObject *obj, NPIdentifier propertyName,
     NPVariant *result) {
   Log log;
 
-  log("NPN_GetProperty(npp=%p, obj=%s, propertyName=%s)\n", npp, 
+  log("NPN_GetProperty(npp=%p, obj=%s, propertyName=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->getproperty(npp, obj, propertyName, result);
   if (r) {
@@ -1050,76 +1050,76 @@ wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName,
   return r;
 }
 
-bool 
-wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
+bool
+wrap_NPN_SetProperty(NPP npp, NPObject *obj, NPIdentifier propertyName,
     const NPVariant *value) {
   Log log;
 
-  log("NPN_SetProperty(npp=%p, obj=%s, propertyName=%s, value=%p)\n", 
-      npp, NPObjectTracker::c_str(obj), 
-      Printable(propertyName).c_str(), 
+  log("NPN_SetProperty(npp=%p, obj=%s, propertyName=%s, value=%p)\n",
+      npp, NPObjectTracker::c_str(obj),
+      Printable(propertyName).c_str(),
       Printable(value).c_str());
   bool r = gBrowserFuncs->setproperty(npp, obj, propertyName, value);
   log(" returned %d\n", r);
   return r;
 }
 
-bool 
-wrap_NPN_RemoveProperty (NPP npp, NPObject *obj, 
+bool
+wrap_NPN_RemoveProperty(NPP npp, NPObject *obj,
     NPIdentifier propertyName) {
   Log log;
 
-  log("NPN_RemoveProperty(npp=%p, obj=%s, propertyName=%s)\n", npp, 
+  log("NPN_RemoveProperty(npp=%p, obj=%s, propertyName=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->removeproperty(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
 }
 
-bool 
-wrap_NPN_HasProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
+bool
+wrap_NPN_HasProperty(NPP npp, NPObject *obj, NPIdentifier propertyName) {
   Log log;
 
-  log("NPN_HasProperty(npp=%p, obj=%s, propertyName=%s)\n", npp, 
+  log("NPN_HasProperty(npp=%p, obj=%s, propertyName=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->hasproperty(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
 }
 
-bool 
-wrap_NPN_HasMethod (NPP npp, NPObject *obj, NPIdentifier propertyName) {
+bool
+wrap_NPN_HasMethod(NPP npp, NPObject *obj, NPIdentifier propertyName) {
   Log log;
 
-  log("NPN_HasMethod(npp=%p, obj=%s, propertyName=%s)\n", npp, 
+  log("NPN_HasMethod(npp=%p, obj=%s, propertyName=%s)\n", npp,
       NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->hasmethod(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
 }
 
-void 
-wrap_NPN_ReleaseVariantValue (NPVariant *variant) {
+void
+wrap_NPN_ReleaseVariantValue(NPVariant *variant) {
   Log log;
 
-  log("NPN_ReleaseVariantValue(variant=%s)\n", 
+  log("NPN_ReleaseVariantValue(variant=%s)\n",
       Printable(variant).c_str());
   gBrowserFuncs->releasevariantvalue(variant);
   return;
 }
 
-void 
-wrap_NPN_SetException (NPObject *obj, const NPUTF8 *message) {
+void
+wrap_NPN_SetException(NPObject *obj, const NPUTF8 *message) {
   Log log;
 
-  log("NPN_SetException(obj=%s, message=\"%s\")\n", 
+  log("NPN_SetException(obj=%s, message=\"%s\")\n",
       NPObjectTracker::c_str(obj), message);
   gBrowserFuncs->setexception(obj, message);
   return;
 }
 
-bool 
-wrap_NPN_PushPopupsEnabledState (NPP npp, NPBool enabled) {
+bool
+wrap_NPN_PushPopupsEnabledState(NPP npp, NPBool enabled) {
   Log log;
 
   log("NPN_PushPopupsEnabledState(npp=%p, enabled=%d)\n", npp, enabled);
@@ -1128,8 +1128,8 @@ wrap_NPN_PushPopupsEnabledState (NPP npp, NPBool enabled) {
   return r;
 }
 
-bool 
-wrap_NPN_PopPopupsEnabledState (NPP npp) {
+bool
+wrap_NPN_PopPopupsEnabledState(NPP npp) {
   Log log;
 
   log("NPN_PopPopupsEnabledState(npp=%p)\n", npp);
@@ -1138,8 +1138,8 @@ wrap_NPN_PopPopupsEnabledState (NPP npp) {
   return r;
 }
 
-bool 
-wrap_NPN_Enumerate (NPP npp, NPObject *obj, NPIdentifier **identifier, 
+bool
+wrap_NPN_Enumerate(NPP npp, NPObject *obj, NPIdentifier **identifier,
     uint32_t *count) {
   Log log;
 
@@ -1154,18 +1154,18 @@ wrap_NPN_Enumerate (NPP npp, NPObject *obj, NPIdentifier **identifier,
   return r;
 }
 
-void 
-wrap_NPN_PluginThreadAsyncCall (NPP npp, void (*func)(void *), 
+void
+wrap_NPN_PluginThreadAsyncCall(NPP npp, void (*func)(void *),
     void *userData) {
   Log log;
 
-  log("NPN_PluginThreadAsyncCall(npp=%p, func=%p, userData=%p)\n", 
+  log("NPN_PluginThreadAsyncCall(npp=%p, func=%p, userData=%p)\n",
       npp, func, userData);
   gBrowserFuncs->pluginthreadasynccall(npp, func, userData);
 }
 
-bool 
-wrap_NPN_Construct (NPP npp, NPObject* obj, const NPVariant *args, 
+bool
+wrap_NPN_Construct(NPP npp, NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   Log log;
 
@@ -1179,13 +1179,13 @@ wrap_NPN_Construct (NPP npp, NPObject* obj, const NPVariant *args,
   return r;
 }
 
-NPError 
-wrap_NPN_GetValueForURL (NPP npp, NPNURLVariable variable, 
+NPError
+wrap_NPN_GetValueForURL(NPP npp, NPNURLVariable variable,
     const char *url, char **value, uint32_t *len) {
   Log log;
 
-  log("NPN_GetValueForURL(npp=%p variable=%s, url=\"%s\")\n", npp, 
-      (variable==NPNURLVCookie)?"cookie": 
+  log("NPN_GetValueForURL(npp=%p variable=%s, url=\"%s\")\n", npp,
+      (variable==NPNURLVCookie)?"cookie":
       ((variable==NPNURLVProxy)?"proxy":"unknown"), url);
   NPError e = gBrowserFuncs->getvalueforurl(npp, variable, url, value, len);
   // FIXME: check return before printing values?
@@ -1196,13 +1196,13 @@ wrap_NPN_GetValueForURL (NPP npp, NPNURLVariable variable,
   return e;
 }
 
-NPError 
-wrap_NPN_SetValueForURL (NPP npp, NPNURLVariable variable, 
+NPError
+wrap_NPN_SetValueForURL(NPP npp, NPNURLVariable variable,
     const char *url, const char *value, uint32_t len) {
   Log log;
 
   log("NPN_SetValueForURL(npp=%p, variable=%s, url=\"%s\", value=\"%s\", "
-      "len=%d)\n", npp, 
+      "len=%d)\n", npp,
       (variable==NPNURLVCookie)?"cookie":
       ((variable==NPNURLVProxy)?"proxy":"unknown"), url, value, len);
   NPError e = gBrowserFuncs->setvalueforurl(npp, variable, url, value, len);
@@ -1210,39 +1210,39 @@ wrap_NPN_SetValueForURL (NPP npp, NPNURLVariable variable,
   return e;
 }
 
-NPError 
-wrap_NPN_GetAuthenticationInfo (NPP npp, const char *protocol, 
-    const char *host, int32_t port, const char *scheme, 
-    const char *realm, char **username, uint32_t *ulen, 
+NPError
+wrap_NPN_GetAuthenticationInfo(NPP npp, const char *protocol,
+    const char *host, int32_t port, const char *scheme,
+    const char *realm, char **username, uint32_t *ulen,
     char **password, uint32_t *plen) {
   Log log;
 
   log("NPN_GetAuthenticationInfo(npp=%p, protocol=\"%s\", host=\"%s\", "
-      "port=%d, scheme=\"%s\", realm=\"%s\")\n", 
+      "port=%d, scheme=\"%s\", realm=\"%s\")\n",
       npp, protocol, host, port, scheme, realm);
-  NPError e = gBrowserFuncs->getauthenticationinfo(npp, protocol, host, 
+  NPError e = gBrowserFuncs->getauthenticationinfo(npp, protocol, host,
       port, scheme, realm, username, ulen, password, plen);
   // FIXME: check return value before printing username & password?
   // FIXME: copy & truncate username & password
-  log(" returned %s, username=\"%s\", password=\"%s\"\n", 
+  log(" returned %s, username=\"%s\", password=\"%s\"\n",
       NPErrorName(e), *username, *password);
   return e;
 }
 
-uint32_t 
-wrap_NPN_ScheduleTimer (NPP npp, uint32_t interval, NPBool repeat, 
+uint32_t
+wrap_NPN_ScheduleTimer(NPP npp, uint32_t interval, NPBool repeat,
     void (*timerFunc)(NPP npp, uint32_t timerID)) {
   Log log;
 
-  log("NPN_ScheduleTimer(npp=%p, interval=%d, repeat=%d, timerFunc=%p)\n", 
+  log("NPN_ScheduleTimer(npp=%p, interval=%d, repeat=%d, timerFunc=%p)\n",
       npp, interval, repeat, timerFunc);
   uint32_t r = gBrowserFuncs->scheduletimer(npp, interval, repeat, timerFunc);
   log(" returned %d\n", r);
   return r;
 }
 
-void 
-wrap_NPN_UnscheduleTimer (NPP npp, uint32_t timerID) {
+void
+wrap_NPN_UnscheduleTimer(NPP npp, uint32_t timerID) {
   Log log;
 
   log("NPN_UnscheduleTimer(npp=%p, timerID=%d)\n", npp, timerID);
@@ -1250,8 +1250,8 @@ wrap_NPN_UnscheduleTimer (NPP npp, uint32_t timerID) {
   return;
 }
 
-NPError 
-wrap_NPN_PopUpContextMenu (NPP npp, NPMenu* menu) {
+NPError
+wrap_NPN_PopUpContextMenu(NPP npp, NPMenu* menu) {
   Log log;
 
   log("NPN_PopUpContextMenu(npp=%p, NPMenu=%p)\n", npp, menu);
@@ -1260,15 +1260,15 @@ wrap_NPN_PopUpContextMenu (NPP npp, NPMenu* menu) {
   return e;
 }
 
-NPBool 
-wrap_NPN_ConvertPoint (NPP npp, 
-    double sourceX, double sourceY, NPCoordinateSpace sourceSpace, 
+NPBool
+wrap_NPN_ConvertPoint(NPP npp,
+    double sourceX, double sourceY, NPCoordinateSpace sourceSpace,
     double *destX, double *destY, NPCoordinateSpace destSpace) {
   Log log;
 
   log("NPN_ConvertPoint(npp=%p, sourceX=%lf, sourceY=%lf, sourceSpace=%d, "
       "destSpace=%d)\n", npp, sourceX, sourceY, sourceSpace, destSpace);
-  NPBool r = gBrowserFuncs->convertpoint(npp, sourceX, sourceY, sourceSpace, 
+  NPBool r = gBrowserFuncs->convertpoint(npp, sourceX, sourceY, sourceSpace,
       destX, destY, destSpace);
   // FIXME: should we print destX and destY on r==FALSE?
   // how can I tell? it's not documented anywhere
@@ -1279,12 +1279,12 @@ wrap_NPN_ConvertPoint (NPP npp,
 
 /* wrapped plugin functions */
 NPError
-wrap_NPP_New(NPMIMEType   pluginType, 
-             NPP          instance, 
-             uint16_t     mode, 
-             int16_t      argc, 
-             char*        argn[], 
-             char*        argv[], 
+wrap_NPP_New(NPMIMEType   pluginType,
+             NPP          instance,
+             uint16_t     mode,
+             int16_t      argc,
+             char*        argn[],
+             char*        argv[],
              NPSavedData* saved) {
   Log log;
 
@@ -1293,7 +1293,7 @@ wrap_NPP_New(NPMIMEType   pluginType,
   for (int i=0; i<argc; i++) {
     log(" arg[%d] %s=\"%s\"\n", i, argn[i], argv[i]);
   }
-  NPError e = gPluginFuncs->newp(pluginType, instance, mode, 
+  NPError e = gPluginFuncs->newp(pluginType, instance, mode,
       argc, argn, argv, saved);
   log(" returned %s\n", NPErrorName(e));
   return e;
@@ -1321,7 +1321,7 @@ wrap_NPP_SetWindow(NPP instance, NPWindow* window) {
 };
 
 NPError
-wrap_NPP_NewStream(NPP instance, NPMIMEType type, NPStream* stream, 
+wrap_NPP_NewStream(NPP instance, NPMIMEType type, NPStream* stream,
     NPBool seekable, uint16_t* stype) {
   Log log;
 
@@ -1336,7 +1336,7 @@ NPError
 wrap_NPP_DestroyStream(NPP instance, NPStream* stream, NPReason reason) {
   Log log;
 
-  log("NPP_DestroyStream(instance=%p, stream=%p, reason=%d)\n", 
+  log("NPP_DestroyStream(instance=%p, stream=%p, reason=%d)\n",
       instance, stream, reason);
   NPError e = gPluginFuncs->destroystream(instance, stream, reason);
   log(" returned %s\n", NPErrorName(e));
@@ -1347,7 +1347,7 @@ void
 wrap_NPP_StreamAsFile(NPP instance, NPStream* stream, const char* fname) {
   Log log;
 
-  log("NPP_StreamAsFile(instance=%p, stream=%p, fname=\"%s\")\n", 
+  log("NPP_StreamAsFile(instance=%p, stream=%p, fname=\"%s\")\n",
       instance, stream, fname);
   gPluginFuncs->asfile(instance, stream, fname);
 }
@@ -1363,11 +1363,11 @@ wrap_NPP_WriteReady(NPP instance, NPStream* stream) {
 }
 
 int32_t
-wrap_NPP_Write(NPP instance, NPStream* stream, int32_t offset, int32_t len, 
+wrap_NPP_Write(NPP instance, NPStream* stream, int32_t offset, int32_t len,
     void* buffer) {
   Log log;
 
-  log("NPP_Write(instance=%p, stream=%p, offset=%d, len=%d, buffer=%p)\n", 
+  log("NPP_Write(instance=%p, stream=%p, offset=%d, len=%d, buffer=%p)\n",
       instance, stream, offset, len, buffer);
   int32_t r = gPluginFuncs->write(instance, stream, offset, len, buffer);
   log(" returned %d\n", r);
@@ -1394,7 +1394,7 @@ wrap_NPP_HandleEvent(NPP instance, void* event) {
 }
 
 void
-wrap_NPP_URLNotify(NPP instance, const char* url, NPReason reason, 
+wrap_NPP_URLNotify(NPP instance, const char* url, NPReason reason,
     void* notifyData) {
   Log log;
 
@@ -1408,7 +1408,7 @@ NPError
 wrap_NPP_GetValue(NPP instance, NPPVariable variable, void* ret) {
   Log log;
 
-  log("NPP_GetValue(instance=%p, variable=%s, ret=%p)\n", 
+  log("NPP_GetValue(instance=%p, variable=%s, ret=%p)\n",
       instance, NPPVariableName(variable), ret);
   NPError e = gPluginFuncs->getvalue(instance, variable, ret);
   if (variable == NPPVpluginScriptableNPObject) {
@@ -1425,7 +1425,7 @@ NPError
 wrap_NPP_SetValue(NPP instance, NPNVariable variable, void* ret) {
   Log log;
 
-  log("NPP_SetValue(instance=%p, variable=%s, ret=%p)\n", 
+  log("NPP_SetValue(instance=%p, variable=%s, ret=%p)\n",
       instance, NPNVariableName(variable), ret);
   NPError e = gPluginFuncs->setvalue(instance, variable, ret);
   log(" returned %s\n", NPErrorName(e));
@@ -1521,15 +1521,15 @@ initialize() {
 
 
 NP_EXPORT(NPError)
-NP_Initialize(NPNetscapeFuncs* aBrowserFuncs, 
+NP_Initialize(NPNetscapeFuncs* aBrowserFuncs,
               NPPluginFuncs* aPluginFuncs) {
   Log log;
 
   if (!gInitialized) initialize();
 
   log("NP_Initialize() browser version=%d, size=%d. "
-      "wrapper version=%d, size=%d\n", 
-      aBrowserFuncs->version, aBrowserFuncs->size, 
+      "wrapper version=%d, size=%d\n",
+      aBrowserFuncs->version, aBrowserFuncs->size,
       gWrappedBrowserFuncs->version, gWrappedBrowserFuncs->size);
 
   // save off the browser functions
@@ -1554,13 +1554,13 @@ NP_Initialize(NPNetscapeFuncs* aBrowserFuncs,
   aPluginFuncs->setvalue = wrap_NPP_SetValue;
 
   // don't claim to support more than the browser
-  gWrappedBrowserFuncs->version = MIN(gWrappedBrowserFuncs->version, 
+  gWrappedBrowserFuncs->version = MIN(gWrappedBrowserFuncs->version,
       gBrowserFuncs->version);
-  gWrappedBrowserFuncs->size = MIN(gWrappedBrowserFuncs->size, 
+  gWrappedBrowserFuncs->size = MIN(gWrappedBrowserFuncs->size,
       gBrowserFuncs->size);
 
   gPluginFuncs = new NPPluginFuncs;
-  NPError e = gExportedPluginFunctions.initialize(gWrappedBrowserFuncs, 
+  NPError e = gExportedPluginFunctions.initialize(gWrappedBrowserFuncs,
       gPluginFuncs);
   log(" returning %s\n", NPErrorName(e));
   return e;
