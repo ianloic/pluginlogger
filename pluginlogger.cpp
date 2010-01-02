@@ -162,13 +162,19 @@ Printable(const NPVariant* aVariant) {
 
 /* helper to print a list of variants - useful for collecting argument lists */
 static std::string
-Printable(const NPVariant* aVariants, uint32_t aCount) {
+Printable(const NPVariant* aVariants, uint32_t aCount, bool aParens=false) {
   std::string variants;
+  if (aParens) {
+    variants.append("(");
+  }
   for (uint32_t i=0; i<aCount; i++) {
     if (i>0) {
       variants.append(", ");
     }
     variants.append(Printable(aVariants[i]).c_str());
+  }
+  if (aParens) {
+    variants.append(")");
   }
   return variants;
 }
@@ -407,22 +413,18 @@ bool
 wrap_NPClass_invoke(NPObject* obj, NPIdentifier name, 
     const NPVariant *args, uint32_t argCount, NPVariant *result) {
   Log log;
-  log("NPClass.invoke(obj=%s, name=%s)\n",
-      NPObjectTracker::c_str(obj), Printable(name).c_str());
-  for (uint32_t i=0; i<argCount; i++) {
-    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
-  }
+  log("NPClass.invoke(obj=%s, name=%s, args=%s)\n",
+      NPObjectTracker::c_str(obj), Printable(name).c_str(),
+      Printable(args, argCount, true).c_str());
   
   bool r = NPClassTracker::getClass(obj->_class)->invoke(obj, name, 
       args, argCount, result);
 
   if (r) {
     if (NPVARIANT_IS_OBJECT(*result)) {
-      std::string path = std::string(".") + Printable(name) + 
-        std::string("(") + Printable(args, argCount) + 
-        std::string(")");
       NPObjectTracker::getTracker(obj)->trackChild(
-          NPVARIANT_TO_OBJECT(*result), path);
+          NPVARIANT_TO_OBJECT(*result), std::string(".") + 
+          Printable(name) + Printable(args, argCount, true));
     }
 
     log(" returned true, result=%s\n", Printable(result).c_str());
@@ -436,21 +438,16 @@ bool
 wrap_NPClass_invokeDefault(NPObject* obj, const NPVariant *args, 
     uint32_t argCount, NPVariant *result) {
   Log log;
-  log("NPClass.invokeDefault(obj=%s)\n",
-      NPObjectTracker::c_str(obj));
-  for (uint32_t i=0; i<argCount; i++) {
-    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
-  }
+  log("NPClass.invokeDefault(obj=%s, args=%s)\n",
+      NPObjectTracker::c_str(obj), Printable(args, argCount, true).c_str());
 
   bool r = NPClassTracker::getClass(obj->_class)->invokeDefault(obj,
       args, argCount, result);
 
   if (r) {
     if (NPVARIANT_IS_OBJECT(*result)) {
-      std::string path = std::string("(") + Printable(args, argCount) + 
-        std::string(")");
       NPObjectTracker::getTracker(obj)->trackChild(
-          NPVARIANT_TO_OBJECT(*result), path);
+          NPVARIANT_TO_OBJECT(*result), Printable(args, argCount, true));
     }
     log(" returned true, result=%s\n", Printable(result).c_str());
   } else {
@@ -991,11 +988,10 @@ wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName,
     const NPVariant *args, uint32_t argCount, NPVariant *result) {
   Log log;
 
-  log("NPN_Invoke(npp=%p, obj=%s, methodName=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), Printable(methodName).c_str());
-  for (uint32_t i=0; i<argCount; i++) {
-    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
-  }
+  log("NPN_Invoke(npp=%p, obj=%s, methodName=%s, args=%s)\n", npp, 
+      NPObjectTracker::c_str(obj), Printable(methodName).c_str(),
+      Printable(args, argCount, true).c_str());
+
   bool r = gBrowserFuncs->invoke(npp, obj, methodName, args, argCount, 
       result);
   if (r) {
@@ -1011,10 +1007,9 @@ wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   Log log;
 
-  log("NPN_InvokeDefault(npp=%p, obj=%s)\n", npp, NPObjectTracker::c_str(obj));
-  for (uint32_t i=0; i<argCount; i++) {
-    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
-  }
+  log("NPN_InvokeDefault(npp=%p, obj=%s, args=%s)\n", npp, 
+      NPObjectTracker::c_str(obj), Printable(args, argCount, true).c_str());
+
   bool r = gBrowserFuncs->invokeDefault(npp, obj, args, argCount, result);
   // FIXME: if the return value is an object we want to track that
   log(" returned %d, result=%s\n", r, Printable(result).c_str());
