@@ -71,201 +71,90 @@ static void log(const char* format, ...) {
   fflush(gLogFile);
 }
 
-/* NPObject and NPClass tracking */
-typedef enum {
-  ORIGIN_UNKNOWN,
-  ORIGIN_BROWSER,
-  ORIGIN_PLUGIN,
-} NPObjectOrigin;
-class NPObjectTracker {
-  private:
-    typedef std::map<NPObject*,NPObjectTracker*> NPObjectMap;
-    static NPObjectMap byObject;
-    NPObject* mObject;
-    NPObjectOrigin mOrigin;
-    std::string mPath;
-    std::string mPrintable;
-    NPObjectTracker(NPObject* aObject, NPObjectOrigin aOrigin, 
-        std::string aPath)
-        : mObject(aObject), mOrigin(aOrigin), mPath(aPath) {
-      updatePrintable();
-    }
-    void updatePrintable() {
-      char ptr[64];
-      snprintf(ptr, 64, "%p", mObject);
-      std::string printable = std::string(mOrigin==ORIGIN_BROWSER?"B":
-            (mOrigin==ORIGIN_PLUGIN?"P":"?"));
-      printable.append(ptr);
-      printable.append(":");
-      printable.append(mPath);
-      mPrintable.assign(printable);
-    }
-    void setOrigin(NPObjectOrigin aOrigin){
-      mOrigin = aOrigin;
-      updatePrintable();
-    }
-  public:
-    static NPObjectTracker* getTracker(NPObject* aObject, 
-        NPObjectOrigin aOrigin = ORIGIN_UNKNOWN, std::string aPath="") {
-      NPObjectMap::iterator i = byObject.find(aObject);
-      if (i == byObject.end()) {
-        NPObjectTracker* tracker = new NPObjectTracker(aObject, aOrigin, aPath);
-        byObject[aObject] = tracker;
-        return tracker;
-      }
-      NPObjectTracker* tracker = byObject[aObject];
-      if (tracker->mOrigin == ORIGIN_UNKNOWN && aOrigin != ORIGIN_UNKNOWN) {
-        tracker->mOrigin = aOrigin;
-      }
-      return tracker;
-    }
-    static const char* c_str(NPObject* aObject) {
-      return getTracker(aObject)->c_str();
-    }
-    NPObject* getObject() const { return mObject; }
-    const char* c_str() const { return mPrintable.c_str(); }
-
-    NPObjectTracker* trackChild(NPObject* aChildObject, 
-        std::string aRelationship) {
-      return getTracker(aChildObject, mOrigin, mPath + aRelationship);
-    }
-
-    NPObjectTracker* trackChild(NPObject* aChildObject,
-        NPIdentifier aIdentifier, std::string aExtra="") {
-      char buf[256];
-      if (gBrowserFuncs->identifierisstring(aIdentifier)) {
-        NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(aIdentifier);
-        snprintf(buf, 256, ".%s", utf8);
-        gBrowserFuncs->memfree(utf8);
-      } else {
-        int32_t intvalue = gBrowserFuncs->intfromidentifier(aIdentifier);
-        snprintf(buf, 256, "[%d]", intvalue);
-      }
-      return trackChild(aChildObject, std::string(buf) + aExtra);
-    }
-};
-NPObjectTracker::NPObjectMap NPObjectTracker::byObject;
-
-#if 0
-class NPClassTracker {
-  private:
-    typedef std::map<NPClass*,NPClassTracker*> NPClassMap;
-    static NPClassMap byClass;
-    NPClass* mClass;
-    bool mInPlugin;
-    NPClassTracker(NPClass* aClass, bool aInPlugin) 
-      : mClass(aClass), mInPlugin(aInPlugin) {
-    }
-  public:
-    static NPClassTracker* getTracker(NPClass* aClass, bool aInPlugin) {
-      NPClassMap::iterator i = byClass.find(aClass);
-      if (i == byClass.end()) {
-        byClass[aClass] = new NPClassTracker(aClass, aInPlugin);
-      }
-      return byClass[aClass];
-    }
-    NPClass* getClass() { return mClass; }
-    bool inPlugin() { return mInPlugin; }
-};
-NPClassTracker::NPClassMap NPClassTracker::byClass;
-#endif
+/* helper to print boolean values */
+static const char*
+boolStr(bool aBoolean) {
+  return aBoolean?"true":"false";
+}
 
 /* helper to get the value of an NPIdentifier */
-class NPIdentifierPrintable {
-  private:
-    char mPrintable[256];
-  public:
-    NPIdentifierPrintable(NPIdentifier& aIdentifier) {
-      if (gBrowserFuncs->identifierisstring(aIdentifier)) {
-        NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(aIdentifier);
-        snprintf(mPrintable, 256, "\"%s\"", utf8);
-        gBrowserFuncs->memfree(utf8);
-      } else {
-        int32_t intvalue = gBrowserFuncs->intfromidentifier(aIdentifier);
-        snprintf(mPrintable, 256, "%d", intvalue);
-      }
-    }
-    operator const char*() const {
-      return mPrintable;
-    }
-    const char* c_str() const {
-      return mPrintable;
-    }
-};
+static std::string
+Printable(NPIdentifier& aIdentifier) {
+  if (gBrowserFuncs->identifierisstring(aIdentifier)) {
+    NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(aIdentifier);
+    std::string printable("\"");
+    printable.append(utf8);
+    printable.append("\"");
+    gBrowserFuncs->memfree(utf8);
+    return printable;
+  } else {
+    int32_t intvalue = gBrowserFuncs->intfromidentifier(aIdentifier);
+    char buffer[16];
+    snprintf(buffer, 16, "%d", intvalue);
+    return std::string(buffer);
+  }
+}
 
 /* helper to print the value of an NPString */
-class NPStringPrintable {
-  private:
-    char* mPrintable;
-  public:
-    NPStringPrintable(const NPString* aString) {
-      mPrintable = (char*)malloc(aString->UTF8Length + 3);
-      snprintf(mPrintable, aString->UTF8Length + 3, "\"%s\"", 
-          aString->UTF8Characters);
-    }
-    operator const char*() const {
-      return mPrintable;
-    }
-    const char* c_str() const {
-      return mPrintable;
-    }
-    ~NPStringPrintable() {
-      free(mPrintable);
-    }
+static std::string
+Printable(const NPString* aString) {
+  std::string printable("\"");
+  printable.reserve(aString->UTF8Length + 2);
+  printable.append(aString->UTF8Characters, aString->UTF8Length);
+  printable.append("\"");
+  return printable;
 };
 
+static std::string Printable(const NPObject* aObject);
+
 /* helper to print the value of an NPVariant */
-class NPVariantPrintable {
-  private:
-    const char *mPrintable;
-    char mBuffer[32];
-    NPStringPrintable* mString;
-  public:
-    NPVariantPrintable(const NPVariant* aVariant) 
-      : mString(NULL) {
-      switch(aVariant->type) {
-        case NPVariantType_Void:
-          mPrintable = "(void)";
-          break;
-        case NPVariantType_Null:
-          mPrintable = "(null)";
-          break;
-        case NPVariantType_Bool:
-          mPrintable = aVariant->value.boolValue?"(true)":"(false)";
-          break;
-        case NPVariantType_Int32:
-          snprintf(mBuffer, 32, "%d", aVariant->value.intValue);
-          mPrintable = mBuffer;
-          break;
-        case NPVariantType_Double:
-          snprintf(mBuffer, 32, "%lf", aVariant->value.doubleValue);
-          mPrintable = mBuffer;
-          break;
-        case NPVariantType_String:
-          if (mString == NULL) {
-            mString = new NPStringPrintable(&aVariant->value.stringValue);
-          }
-          mPrintable = mString->c_str();
-          break;
-        case NPVariantType_Object:
-          NPObjectTracker* tracker = 
-            NPObjectTracker::getTracker(aVariant->value.objectValue);
-          mPrintable = tracker->c_str();
-          break;
-      }
+static std::string
+Printable(const NPVariant& aVariant) {
+  char buffer[32];
+  switch(aVariant.type) {
+    case NPVariantType_Void:
+      return std::string("(void)");
+      break;
+    case NPVariantType_Null:
+      return std::string("(null)");
+      break;
+    case NPVariantType_Bool:
+      return std::string(boolStr(aVariant.value.boolValue));
+      break;
+    case NPVariantType_Int32:
+      snprintf(buffer, 32, "%d", aVariant.value.intValue);
+      return std::string(buffer);
+      break;
+    case NPVariantType_Double:
+      snprintf(buffer, 32, "%lf", aVariant.value.doubleValue);
+      return std::string(buffer);
+      break;
+    case NPVariantType_String:
+      return Printable(&aVariant.value.stringValue);
+      break;
+    case NPVariantType_Object:
+      return Printable(aVariant.value.objectValue);
+      break;
+  }
+  return std::string("(unknown variant type)");
+}
+static std::string
+Printable(const NPVariant* aVariant) {
+  return Printable(*aVariant);
+}
+
+/* helper to print a list of variants - useful for collecting argument lists */
+static std::string
+Printable(const NPVariant* aVariants, uint32_t aCount) {
+  std::string variants;
+  for (uint32_t i=0; i<aCount; i++) {
+    if (i>0) {
+      variants.append(", ");
     }
-    operator const char*() const {
-      return mPrintable;
-    }
-    const char* c_str() const {
-      return mPrintable;
-    }
-    ~NPVariantPrintable() {
-      if (mString != NULL) {
-        delete mString;
-      }
-    }
-};
+    variants.append(Printable(aVariants[i]).c_str());
+  }
+  return variants;
+}
 
 /* helper to get the printable name of an NPNVariable */
 const char* 
@@ -336,6 +225,344 @@ NPErrorName(NPError e) {
   return "UNKNOWN NPError";
 }
 
+/* NPObject and NPClass tracking */
+typedef enum {
+  ORIGIN_UNKNOWN,
+  ORIGIN_BROWSER,
+  ORIGIN_PLUGIN,
+} NPObjectOrigin;
+class NPObjectTracker {
+  private:
+    typedef std::map<const NPObject*,NPObjectTracker*> NPObjectMap;
+    static NPObjectMap byObject;
+    const NPObject* mObject;
+    NPObjectOrigin mOrigin;
+    std::string mPath;
+    std::string mPrintable;
+    NPObjectTracker(const NPObject* aObject, NPObjectOrigin aOrigin, 
+        std::string aPath)
+        : mObject(aObject), mOrigin(aOrigin), mPath(aPath) {
+      updatePrintable();
+    }
+    void updatePrintable() {
+      char ptr[64];
+      snprintf(ptr, 64, "%p", mObject);
+      std::string printable = std::string(mOrigin==ORIGIN_BROWSER?"B":
+            (mOrigin==ORIGIN_PLUGIN?"P":"?"));
+      printable.append(ptr);
+      printable.append(":");
+      printable.append(mPath);
+      mPrintable.assign(printable);
+    }
+    void setOrigin(NPObjectOrigin aOrigin){
+      mOrigin = aOrigin;
+      updatePrintable();
+    }
+  public:
+    static NPObjectTracker* getTracker(const NPObject* aObject, 
+        NPObjectOrigin aOrigin = ORIGIN_UNKNOWN, std::string aPath="") {
+      NPObjectMap::iterator i = byObject.find(aObject);
+      if (i == byObject.end()) {
+        NPObjectTracker* tracker = new NPObjectTracker(aObject, aOrigin, aPath);
+        byObject[aObject] = tracker;
+        return tracker;
+      }
+      NPObjectTracker* tracker = byObject[aObject];
+      if (tracker->mOrigin == ORIGIN_UNKNOWN && aOrigin != ORIGIN_UNKNOWN) {
+        tracker->mOrigin = aOrigin;
+      }
+      return tracker;
+    }
+    static const char* c_str(NPObject* aObject) {
+      return getTracker(aObject)->c_str();
+    }
+    const NPObject* getObject() const { return mObject; }
+    const char* c_str() const { return mPrintable.c_str(); }
+
+    NPObjectTracker* trackChild(NPObject* aChildObject, 
+        std::string aRelationship) {
+      return getTracker(aChildObject, mOrigin, mPath + aRelationship);
+    }
+
+    NPObjectTracker* trackChild(NPObject* aChildObject,
+        NPIdentifier aIdentifier, std::string aExtra="") {
+      char buf[256];
+      if (gBrowserFuncs->identifierisstring(aIdentifier)) {
+        NPUTF8* utf8 = gBrowserFuncs->utf8fromidentifier(aIdentifier);
+        snprintf(buf, 256, ".%s", utf8);
+        gBrowserFuncs->memfree(utf8);
+      } else {
+        int32_t intvalue = gBrowserFuncs->intfromidentifier(aIdentifier);
+        snprintf(buf, 256, "[%d]", intvalue);
+      }
+      return trackChild(aChildObject, std::string(buf) + aExtra);
+    }
+};
+NPObjectTracker::NPObjectMap NPObjectTracker::byObject;
+
+static std::string Printable(const NPObject* aObject) {
+  NPObjectTracker* tracker = NPObjectTracker::getTracker(aObject);
+  return std::string(tracker->c_str());
+}
+
+class NPClassTracker {
+  private:
+    typedef std::map<NPClass*,NPClass*> NPClassMap;
+    static NPClassMap mWrappers;
+    static NPClassMap mClasses;
+  public:
+    static bool hasWrapper(NPClass* aClass) {
+      NPClassMap::iterator i = mWrappers.find(aClass);
+      return (i != mWrappers.end());
+    }
+    static NPClass* getWrapper(NPClass* aClass) {
+      return mWrappers[aClass];
+    }
+    static NPClass* getClass(NPClass* aWrapper) {
+      return mClasses[aWrapper];
+    }
+    static inline NPClass* wrap(NPClass* aClass);
+};
+NPClassTracker::NPClassMap NPClassTracker::mWrappers;
+NPClassTracker::NPClassMap NPClassTracker::mClasses;
+
+
+/* wrappers for NPClass virtual methods */
+/* FIXME: Do we need to swap the obj->_class pointer back while making calls?
+ *        I hope not, but maybe. We'll see. */
+NPObject*
+wrap_NPClass_allocate(NPP npp, NPClass *aClass) {
+  log("NPClass.allocate(npp=%p, aClass=%p)\n", npp, aClass);
+
+  NPClass* wrapped = NPClassTracker::getClass(aClass);
+  NPObject* r = wrapped->allocate(npp, wrapped);
+  r->_class = NPClassTracker::wrap(r->_class);
+
+  if (r != NULL) {
+    // FIXME: what should we put for the path?
+    NPObjectTracker* ot = NPObjectTracker::getTracker(r, ORIGIN_PLUGIN);
+    log(" returned %s\n", ot->c_str());
+  } else {
+    log(" returned NULL\n");
+  }
+  return r;
+}
+
+void
+wrap_NPClass_deallocate(NPObject* obj) {
+  log("NPClass.deallocate(obj=%s)\n", NPObjectTracker::c_str(obj));
+
+  NPClassTracker::getClass(obj->_class)->deallocate(obj);
+  // FIXME: remove from tracking, right?
+
+  return;
+}
+
+void 
+wrap_NPClass_invalidate(NPObject* obj) {
+  log("NPClass.deallocate(obj=%s)\n", NPObjectTracker::c_str(obj));
+
+  NPClassTracker::getClass(obj->_class)->invalidate(obj);
+
+  return;
+}
+
+bool
+wrap_NPClass_hasMethod(NPObject* obj, NPIdentifier name) {
+  log("NPClass.hasMethod(obj=%s, name=%s)\n", 
+      NPObjectTracker::c_str(obj), Printable(name).c_str());
+
+  bool r = NPClassTracker::getClass(obj->_class)->hasMethod(obj, name);
+
+  log(" returns %s\n", boolStr(r));
+  return r;
+}
+
+bool
+wrap_NPClass_invoke(NPObject* obj, NPIdentifier name, 
+    const NPVariant *args, uint32_t argCount, NPVariant *result) {
+  log("NPClass.invoke(obj=%s, name=%s)\n",
+      NPObjectTracker::c_str(obj), Printable(name).c_str());
+  for (uint32_t i=0; i<argCount; i++) {
+    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
+  }
+  
+  bool r = NPClassTracker::getClass(obj->_class)->invoke(obj, name, 
+      args, argCount, result);
+
+  if (r) {
+    if (NPVARIANT_IS_OBJECT(*result)) {
+      std::string path = std::string(".") + Printable(name) + 
+        std::string("(") + Printable(args, argCount) + 
+        std::string(")");
+      NPObjectTracker::getTracker(obj)->trackChild(
+          NPVARIANT_TO_OBJECT(*result), path);
+    }
+
+    log(" returned true, result=%s\n", Printable(result).c_str());
+  } else {
+    log(" returned false\n");
+  }
+  return r;
+}
+
+bool
+wrap_NPClass_invokeDefault(NPObject* obj, const NPVariant *args, 
+    uint32_t argCount, NPVariant *result) {
+  log("NPClass.invokeDefault(obj=%s)\n",
+      NPObjectTracker::c_str(obj));
+  for (uint32_t i=0; i<argCount; i++) {
+    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
+  }
+
+  bool r = NPClassTracker::getClass(obj->_class)->invokeDefault(obj,
+      args, argCount, result);
+
+  if (r) {
+    if (NPVARIANT_IS_OBJECT(*result)) {
+      std::string path = std::string("(") + Printable(args, argCount) + 
+        std::string(")");
+      NPObjectTracker::getTracker(obj)->trackChild(
+          NPVARIANT_TO_OBJECT(*result), path);
+    }
+    log(" returned true, result=%s\n", Printable(result).c_str());
+  } else {
+    log(" returned false\n");
+  }
+  
+  return r;
+}
+
+bool 
+wrap_NPClass_hasProperty(NPObject *obj, NPIdentifier name) {
+  log("NPClass.hasProperty(obj=%s, name=%s)\n",
+      NPObjectTracker::c_str(obj), Printable(name).c_str());
+
+  bool r = NPClassTracker::getClass(obj->_class)->hasProperty(obj, name);
+
+  log(" returned %s\n", boolStr(r));
+  return r;
+}
+
+bool 
+wrap_NPClass_getProperty(NPObject *obj, NPIdentifier name, 
+    NPVariant *result) {
+  log("NPClass.getProperty(obj=%s, name=%s)\n",
+      NPObjectTracker::c_str(obj), Printable(name).c_str());
+
+  bool r = NPClassTracker::getClass(obj->_class)->getProperty(obj, name, 
+      result);
+
+  if (r) {
+    // if the return value is an object we want to track that
+    if (NPVARIANT_IS_OBJECT(*result)) {
+      NPObjectTracker::getTracker(obj)->trackChild(
+          NPVARIANT_TO_OBJECT(*result), 
+          std::string(".")+Printable(name));
+    }
+    log(" returned true, result=%s\n", Printable(result).c_str());
+  } else {
+    log(" returned false\n");
+  }
+  return r;
+}
+
+bool 
+wrap_NPClass_setProperty (NPObject *obj, NPIdentifier name, 
+    const NPVariant *value) {
+  log("NPClass.setProperty(obj=%s, name=%s, value=%p)\n", 
+      NPObjectTracker::c_str(obj), 
+      Printable(name).c_str(), 
+      Printable(value).c_str());
+
+  bool r = 
+    NPClassTracker::getClass(obj->_class)->setProperty(obj, name, value);
+
+  log(" returned %s\n", boolStr(r));
+  return r;
+}
+
+bool 
+wrap_NPClass_removeProperty (NPObject *obj, NPIdentifier name) {
+  log("NPClass.removeProperty(obj=%s, name=%s)\n",
+      NPObjectTracker::c_str(obj), Printable(name).c_str());
+
+  bool r = NPClassTracker::getClass(obj->_class)->removeProperty(obj, name);
+
+  log(" returned %s\n", boolStr(r));
+  return r;
+}
+
+bool 
+wrap_NPClass_enumerate (NPObject *obj, NPIdentifier **value, 
+    uint32_t *count) {
+  log("NPClass.enumerate(obj=%s)\n", NPObjectTracker::c_str(obj));
+
+  bool r = NPClassTracker::getClass(obj->_class)->enumerate(obj, value, count);
+
+  if (r) {
+    for (uint32_t i = 0; i < *count; i++) {
+      log("  %s\n", Printable(*value[i]).c_str());
+    }
+  }
+  log(" returned %s\n", boolStr(r));
+  return r;
+}
+
+bool 
+wrap_NPClass_construct (NPObject* obj, const NPVariant *args, 
+    uint32_t argCount, NPVariant *result) {
+  log("NPClass.construct(obj=%s)\n", NPObjectTracker::c_str(obj));
+  for (uint32_t i = 0; i<argCount; i++) {
+    log("  arg[%d] = %s\n", i, Printable(&args[i]).c_str());
+  }
+
+  bool r = NPClassTracker::getClass(obj->_class)->construct(obj, 
+      args, argCount, result);
+
+  if (r) {
+    if (NPVARIANT_IS_OBJECT(*result)) {
+      std::string path = std::string("([constructor]") + 
+        Printable(args, argCount) + std::string(")");
+      NPObjectTracker::getTracker(obj)->trackChild(
+          NPVARIANT_TO_OBJECT(*result), path);
+    }
+    log(" returned true, result=%s\n", Printable(result).c_str());
+  } else {
+    log(" returned false\n");
+  }
+
+  return r;
+}
+
+NPClass* 
+NPClassTracker::wrap(NPClass* aClass) {
+  if (hasWrapper(aClass)) {
+    return getWrapper(aClass);
+  } else {
+    // create a wrapper NPClass
+    NPClass* wrapper = new NPClass;
+    wrapper->allocate = wrap_NPClass_allocate;
+    wrapper->deallocate = wrap_NPClass_deallocate;
+    wrapper->invalidate = wrap_NPClass_invalidate;
+    wrapper->hasMethod = wrap_NPClass_hasMethod;
+    wrapper->invoke = wrap_NPClass_invoke;
+    wrapper->invokeDefault = wrap_NPClass_invokeDefault;
+    wrapper->hasProperty = wrap_NPClass_hasProperty;
+    wrapper->getProperty = wrap_NPClass_getProperty;
+    wrapper->setProperty = wrap_NPClass_setProperty;
+    wrapper->removeProperty = wrap_NPClass_removeProperty;
+    wrapper->enumerate = wrap_NPClass_enumerate;
+    wrapper->construct = wrap_NPClass_construct;
+    wrapper->structVersion = MIN(3, aClass->structVersion);
+    // register the wrapper
+    mWrappers[aClass] = wrapper;
+    mClasses[wrapper] = aClass;
+    return wrapper;
+  }
+}
+
+
 /* wrapped browser functions */
 NPError 
 wrap_NPN_GetValue (NPP npp, NPNVariable variable, void *ret_value) {
@@ -355,7 +582,7 @@ wrap_NPN_GetValue (NPP npp, NPNVariable variable, void *ret_value) {
         break;
       case NPNVjavascriptEnabledBool: 
         log("  NPNVjavascriptEnabledBool = %s\n", 
-            (*(bool*)ret_value)?"true":"false");
+            boolStr(*(bool*)ret_value));
         break;
       case NPNVasdEnabledBool: 
         log("  NPNVasdEnabledBool = %s\n", 
@@ -635,7 +862,8 @@ wrap_NPN_IntFromIdentifier (NPIdentifier identifier) {
 NPObject* 
 wrap_NPN_CreateObject (NPP npp, NPClass *aClass) {
   log("NPN_CreateObject(npp=%p, class=%p)\n", npp, aClass);
-  NPObject* r = gBrowserFuncs->createobject(npp, aClass);
+  NPObject* r = gBrowserFuncs->createobject(npp, 
+      NPClassTracker::wrap(aClass));
   // the plugin is requesting that the browser create an object
   // so I think it belongs on the plugin side. we will see...
   NPObjectTracker::getTracker(r, ORIGIN_PLUGIN);
@@ -663,14 +891,14 @@ bool
 wrap_NPN_Invoke (NPP npp, NPObject* obj, NPIdentifier methodName, 
     const NPVariant *args, uint32_t argCount, NPVariant *result) {
   log("NPN_Invoke(npp=%p, obj=%s, methodName=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), NPIdentifierPrintable(methodName).c_str());
+      NPObjectTracker::c_str(obj), Printable(methodName).c_str());
   for (uint32_t i=0; i<argCount; i++) {
-    log("  args[%d] = %s\n", i, NPVariantPrintable(&args[i]).c_str());
+    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
   }
   bool r = gBrowserFuncs->invoke(npp, obj, methodName, args, argCount, 
       result);
   if (r) {
-    log(" returned true, result=%s\n", NPVariantPrintable(result).c_str());
+    log(" returned true, result=%s\n", Printable(result).c_str());
   } else {
     log(" returned false\n");
   }
@@ -682,11 +910,11 @@ wrap_NPN_InvokeDefault (NPP npp, NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   log("NPN_InvokeDefault(npp=%p, obj=%s)\n", npp, NPObjectTracker::c_str(obj));
   for (uint32_t i=0; i<argCount; i++) {
-    log("  args[%d] = %s\n", i, NPVariantPrintable(&args[i]).c_str());
+    log("  args[%d] = %s\n", i, Printable(&args[i]).c_str());
   }
   bool r = gBrowserFuncs->invokeDefault(npp, obj, args, argCount, result);
   // FIXME: if the return value is an object we want to track that
-  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
+  log(" returned %d, result=%s\n", r, Printable(result).c_str());
   return r;
 }
 
@@ -694,10 +922,10 @@ bool
 wrap_NPN_Evaluate (NPP npp, NPObject *obj, NPString *script, 
     NPVariant *result) {
   log("NPN_Evaluate(npp=%p, obj=%s, script=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), NPStringPrintable(script).c_str());
+      NPObjectTracker::c_str(obj), Printable(script).c_str());
   bool r = gBrowserFuncs->evaluate(npp, obj, script, result);
   // FIXME: if the return value is an object we want to track that
-  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
+  log(" returned %d, result=%s\n", r, Printable(result).c_str());
   return r;
 }
 
@@ -705,7 +933,7 @@ bool
 wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName, 
     NPVariant *result) {
   log("NPN_GetProperty(npp=%p, obj=%s, propertyName=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), NPIdentifierPrintable(propertyName).c_str());
+      NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->getproperty(npp, obj, propertyName, result);
   if (r) {
     // if the return value is an object we want to track that
@@ -713,7 +941,7 @@ wrap_NPN_GetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName,
       NPObjectTracker::getTracker(obj)->trackChild(
           NPVARIANT_TO_OBJECT(*result), propertyName);
     }
-    log(" returned true, result=%s\n", NPVariantPrintable(result).c_str());
+    log(" returned true, result=%s\n", Printable(result).c_str());
   } else {
     log(" returned false\n");
   }
@@ -725,8 +953,8 @@ wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName,
     const NPVariant *value) {
   log("NPN_SetProperty(npp=%p, obj=%s, propertyName=%s, value=%p)\n", 
       npp, NPObjectTracker::c_str(obj), 
-      NPIdentifierPrintable(propertyName).c_str(), 
-      NPVariantPrintable(value).c_str());
+      Printable(propertyName).c_str(), 
+      Printable(value).c_str());
   bool r = gBrowserFuncs->setproperty(npp, obj, propertyName, value);
   log(" returned %d\n", r);
   return r;
@@ -735,8 +963,8 @@ wrap_NPN_SetProperty (NPP npp, NPObject *obj, NPIdentifier propertyName,
 bool 
 wrap_NPN_RemoveProperty (NPP npp, NPObject *obj, 
     NPIdentifier propertyName) {
-  log("NPN_RemoveProperty(npp=%p, obj=%s, properyName=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), NPIdentifierPrintable(propertyName).c_str());
+  log("NPN_RemoveProperty(npp=%p, obj=%s, propertyName=%s)\n", npp, 
+      NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->removeproperty(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
@@ -745,7 +973,7 @@ wrap_NPN_RemoveProperty (NPP npp, NPObject *obj,
 bool 
 wrap_NPN_HasProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
   log("NPN_HasProperty(npp=%p, obj=%s, propertyName=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), NPIdentifierPrintable(propertyName).c_str());
+      NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->hasproperty(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
@@ -754,7 +982,7 @@ wrap_NPN_HasProperty (NPP npp, NPObject *obj, NPIdentifier propertyName) {
 bool 
 wrap_NPN_HasMethod (NPP npp, NPObject *obj, NPIdentifier propertyName) {
   log("NPN_HasMethod(npp=%p, obj=%s, propertyName=%s)\n", npp, 
-      NPObjectTracker::c_str(obj), NPIdentifierPrintable(propertyName).c_str());
+      NPObjectTracker::c_str(obj), Printable(propertyName).c_str());
   bool r = gBrowserFuncs->hasmethod(npp, obj, propertyName);
   log(" returned %d\n", r);
   return r;
@@ -763,7 +991,7 @@ wrap_NPN_HasMethod (NPP npp, NPObject *obj, NPIdentifier propertyName) {
 void 
 wrap_NPN_ReleaseVariantValue (NPVariant *variant) {
   log("NPN_ReleaseVariantValue(variant=%s)\n", 
-      NPVariantPrintable(variant).c_str());
+      Printable(variant).c_str());
   gBrowserFuncs->releasevariantvalue(variant);
   return;
 }
@@ -799,7 +1027,7 @@ wrap_NPN_Enumerate (NPP npp, NPObject *obj, NPIdentifier **identifier,
   bool r = gBrowserFuncs->enumerate(npp, obj, identifier, count);
   if (r) {
     for (uint32_t i = 0; i < *count; i++) {
-      log("  %s\n", NPIdentifierPrintable(*identifier[i]).c_str());
+      log("  %s\n", Printable(*identifier[i]).c_str());
     }
   }
   log(" returned %d\n", r);
@@ -819,11 +1047,11 @@ wrap_NPN_Construct (NPP npp, NPObject* obj, const NPVariant *args,
     uint32_t argCount, NPVariant *result) {
   log("NPN_Construct(npp=%p, obj=%s)\n", npp, NPObjectTracker::c_str(obj));
   for (uint32_t i = 0; i<argCount; i++) {
-    log("  arg[%d] = %s\n", i, NPVariantPrintable(&args[i]).c_str());
+    log("  arg[%d] = %s\n", i, Printable(&args[i]).c_str());
   }
   bool r = gBrowserFuncs->construct(npp, obj, args, argCount, result);
   // FIXME: check return value before showing result?
-  log(" returned %d, result=%s\n", r, NPVariantPrintable(result).c_str());
+  log(" returned %d, result=%s\n", r, Printable(result).c_str());
   return r;
 }
 
